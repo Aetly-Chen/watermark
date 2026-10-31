@@ -1,0 +1,1877 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>水印工坊 · 真机交互原型</title>
+<style>
+/* ───────────────────────────────────────────────
+   设计令牌：奶油白 / 炭黑 / 焦橙。改色只改这里。
+   ─────────────────────────────────────────────── */
+:root{
+  --cream:#F4EFE5;   --paper:#FFFDF8;  --ink:#1B1A17;
+  --ink2:#5A544B;    --ink3:#6E6659;   --line:#E3DACA;
+  --line2:#EFE8DA;   --flame:#C4551B;  --flame-txt:#9E4410;
+  --flame-soft:#F7E4D4; --media:#2A2620; --danger:#A3301F;
+}
+[data-theme="dark"]{
+  --cream:#14120E;   --paper:#1D1A14;  --ink:#F2EDE2;
+  --ink2:#B4AA9A;    --ink3:#8F8676;   --line:#332D23;
+  --line2:#272219;   --flame:#E2762F;  --flame-txt:#E8935A;
+  --flame-soft:#3A2413; --media:#0B0A08; --danger:#E0705C;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{height:100%}
+body{
+  font-family:-apple-system,BlinkMacSystemFont,"Segoe UI","PingFang SC","Hiragino Sans GB","Microsoft YaHei UI","Microsoft YaHei",system-ui,sans-serif;
+  background:#EFE8DB; color:var(--ink);
+  -webkit-font-smoothing:antialiased;
+  font-feature-settings:"tnum" 1;
+  padding:34px 30px 60px;
+}
+::selection{background:var(--flame);color:#fff}
+:focus-visible{outline:2px solid var(--flame);outline-offset:2px}
+button{font:inherit;color:inherit;background:none;border:0;cursor:pointer;
+  -webkit-tap-highlight-color:transparent}
+.num{font-variant-numeric:tabular-nums}
+
+/* ── 页面骨架：左边规格轨，右边真机 ── */
+.stage{display:flex;gap:52px;align-items:flex-start;justify-content:center;
+  max-width:1180px;margin:0 auto}
+.rail{width:262px;flex:0 0 auto;padding-top:8px}
+.rail h1{font-size:16px;font-weight:700;letter-spacing:-.01em}
+.rail .sub{font-size:11.5px;color:var(--ink3);margin-top:5px;line-height:1.6}
+.block{margin-top:26px}
+.block h2{font-size:10.5px;font-weight:600;color:var(--ink3);
+  letter-spacing:.04em;margin-bottom:10px}
+.idx{display:flex;flex-direction:column;gap:2px}
+.idx button{display:flex;align-items:center;gap:9px;width:100%;text-align:left;
+  padding:7px 9px;border-radius:8px;font-size:12.5px;color:var(--ink2);
+  transition:background .16s ease,color .16s ease}
+.idx button .k{width:5px;height:5px;border-radius:50%;background:var(--line);
+  flex:0 0 auto;transition:background .16s ease}
+.idx button:hover{background:#E7DFD0;color:var(--ink)}
+.idx button[aria-current="true"]{background:#E7DFD0;color:var(--ink);font-weight:600}
+.idx button[aria-current="true"] .k{background:var(--flame)}
+.idx button .tag{margin-left:auto;font-size:10px;color:var(--ink3)}
+.tokens{display:flex;flex-direction:column;gap:7px}
+.sw{display:flex;align-items:center;gap:9px;font-size:11.5px;color:var(--ink2)}
+.sw i{width:20px;height:20px;border-radius:6px;border:1px solid rgba(27,26,23,.14);
+  flex:0 0 auto}
+.sw b{font-weight:600;color:var(--ink);font-size:11.5px;min-width:62px}
+.sw span{color:var(--ink3);font-family:ui-monospace,"Cascadia Mono","Consolas",monospace;
+  font-size:10.5px;letter-spacing:.01em}
+.note{font-size:11px;line-height:1.75;color:var(--ink3);
+  border-top:1px solid var(--line);padding-top:14px;margin-top:26px}
+.note b{color:var(--ink2);font-weight:600}
+
+/* ── 真机 ── */
+.rig{flex:0 0 auto;position:relative}
+/* 换成 404 宽：屏 384 */
+.device{position:relative;width:404px;padding:10px;border-radius:48px;
+  background:linear-gradient(158deg,#2E2A24,#141310 58%,#26221C);
+  box-shadow:0 34px 60px -20px rgba(27,26,23,.42),0 4px 0 rgba(255,255,255,.14) inset,
+             0 0 0 1px rgba(0,0,0,.5)}
+.device::before,.device::after{content:"";position:absolute;width:2.5px;border-radius:2px;
+  background:#3B362D}
+.device::before{left:-2.5px;top:132px;height:52px;
+  box-shadow:0 68px 0 #3B362D}
+.device::after{right:-2.5px;top:158px;height:82px}
+.screen{position:relative;width:384px;height:852px;border-radius:39px;overflow:hidden;
+  background:var(--cream);color:var(--ink);display:flex;flex-direction:column;
+  transition:background .28s ease,color .28s ease}
+.status{height:40px;flex:0 0 auto;display:flex;align-items:center;
+  justify-content:space-between;padding:0 22px;font-size:12px;font-weight:600;
+  position:relative;z-index:6}
+.status .punch{position:absolute;left:50%;transform:translateX(-50%);top:11px;
+  width:15px;height:15px;border-radius:50%;background:#0A0908;
+  box-shadow:0 0 0 1.5px rgba(59,54,45,.55)}
+.status .ic{display:flex;align-items:center;gap:5px;color:var(--ink2)}
+.body{flex:1 1 auto;position:relative;min-height:0}
+.panel{position:absolute;inset:0;display:none;flex-direction:column;
+  min-height:0;background:var(--cream)}
+.panel.on{display:flex}
+.panel.slide-r{animation:sl .26s cubic-bezier(.22,1,.36,1)}
+.panel.slide-l{animation:slt .26s cubic-bezier(.22,1,.36,1)}
+@keyframes sl{from{transform:translateX(15px);opacity:0}to{transform:none;opacity:1}}
+@keyframes slt{from{transform:translateX(-15px);opacity:0}to{transform:none;opacity:1}}
+.gesture{height:18px;flex:0 0 auto;display:flex;align-items:center;
+  justify-content:center;background:var(--cream);position:relative;z-index:6}
+.gesture i{width:126px;height:4px;border-radius:99px;background:var(--line)}
+
+/* 顶栏 */
+.bar{flex:0 0 auto;height:48px;display:flex;align-items:center;gap:8px;
+  padding:0 12px 0 8px;border-bottom:1px solid var(--line2)}
+.bar h2{font-size:13.5px;font-weight:650;letter-spacing:-.005em}
+.bar .icb{width:32px;height:32px;border-radius:9px;display:flex;align-items:center;
+  justify-content:center;color:var(--ink2);flex:0 0 auto;
+  transition:background .15s ease,color .15s ease}
+.bar .icb:hover{background:var(--line2);color:var(--ink)}
+.bar .sp{margin-left:auto}
+
+/* 通用图标 */
+.i{width:18px;height:18px;flex:0 0 auto;stroke:currentColor;fill:none;
+  stroke-width:1.65;stroke-linecap:round;stroke-linejoin:round}
+.i.s{width:15px;height:15px}
+.i.l{width:21px;height:21px}
+.i.f{fill:currentColor;stroke:none}
+
+/* 滚动容器（正常应无滚动） */
+.scr{flex:1 1 auto;min-height:0;overflow-y:auto;overflow-x:hidden;
+  display:flex;flex-direction:column;padding:14px 16px 12px;gap:12px}
+.scr::-webkit-scrollbar{width:3px}
+.scr::-webkit-scrollbar-thumb{background:var(--line);border-radius:9px}
+
+/* 卡片与列表 */
+.card{background:var(--paper);border:1px solid var(--line);border-radius:14px}
+.li{display:flex;align-items:center;gap:11px;padding:10px 0;
+  border-bottom:1px solid var(--line2);width:100%;text-align:left;
+  transition:opacity .15s ease}
+.li:last-child{border-bottom:0}
+.li .lead{width:30px;height:30px;border-radius:9px;display:flex;align-items:center;
+  justify-content:center;background:var(--line2);color:var(--ink2);flex:0 0 auto}
+.li .tx{flex:1 1 auto;min-width:0}
+.li .tx b{display:block;font-size:12.5px;font-weight:600;letter-spacing:-.005em}
+.li .tx span{display:block;font-size:10.5px;color:var(--ink3);margin-top:2px}
+.li .rt{font-size:11.5px;color:var(--ink3);flex:0 0 auto}
+.grp{font-size:10.5px;font-weight:650;color:var(--ink3);letter-spacing:.03em;
+  padding:0 2px;margin-bottom:-4px}
+.li:active{opacity:.55}
+
+/* 开关 */
+.sw2{width:38px;height:22px;border-radius:99px;background:var(--line);
+  position:relative;flex:0 0 auto;transition:background .2s ease;border:0;padding:0}
+.sw2::after{content:"";position:absolute;top:2.5px;left:2.5px;width:17px;height:17px;
+  border-radius:50%;background:var(--paper);transition:transform .2s cubic-bezier(.22,1,.36,1);
+  box-shadow:0 1px 2px rgba(27,26,23,.22)}
+.sw2[aria-checked="true"]{background:var(--flame)}
+.sw2[aria-checked="true"]::after{transform:translateX(16px)}
+
+/* 底部导航 */
+.tabbar{flex:0 0 auto;height:60px;display:flex;align-items:center;
+  border-top:1px solid var(--line);background:var(--paper);padding:0 10px}
+.tab{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:3px;
+  font-size:10px;color:var(--ink3);padding:6px 0;border-radius:10px;
+  transition:color .16s ease}
+.tab.on{color:var(--flame-txt);font-weight:650}
+.tab .i{width:20px;height:20px}
+
+/* 图片/视频画布：固定 4:3，与素材同比例，避免 cover 把角落水印裁到画外 */
+.media{position:relative;flex:0 0 auto;aspect-ratio:4/3;border-radius:14px;
+  overflow:hidden;background:var(--media);user-select:none;touch-action:none}
+.lyr{position:absolute;inset:0;overflow:hidden}
+.lyr .ph{position:absolute;inset:0;background-size:cover;background-position:center;
+  background-repeat:no-repeat}
+/* 画在照片上的水印本体（原型里用 DOM 画，保证「修复后」能真的把它撤掉） */
+.wm{position:absolute;display:flex;align-items:center;justify-content:center;gap:5px;
+  background:rgba(255,255,255,.84);border-radius:4px;color:#231F19;overflow:hidden;
+  font-weight:800;letter-spacing:.2em;font-size:8.5px;white-space:nowrap}
+.wm .mk{width:11px;height:11px;border-radius:50%;background:#241F19;flex:0 0 auto}
+.wm.plain{background:rgba(255,255,255,.9);font-size:10px;letter-spacing:.14em}
+.selbox{position:absolute;border:1.5px solid var(--flame);border-radius:6px;
+  background:rgba(196,85,27,.12);cursor:move;touch-action:none}
+.selbox .hd{position:absolute;width:11px;height:11px;border-radius:3px;
+  background:var(--paper);border:1.5px solid var(--flame)}
+.selbox .hd.tl{left:-6px;top:-6px}.selbox .hd.tr{right:-6px;top:-6px}
+.selbox .hd.bl{left:-6px;bottom:-6px}.selbox .hd.br{right:-6px;bottom:-6px;cursor:nwse-resize}
+.selbox .lb{position:absolute;left:0;top:-19px;font-size:9.5px;font-weight:650;
+  color:#fff;background:var(--flame);padding:2px 6px;border-radius:4px;white-space:nowrap}
+/* 追踪出来的帧：四角空心，表示这个框是算出来的、不能直接改 */
+.selbox.locked .hd{background:transparent}
+.badge{position:absolute;left:10px;top:10px;font-size:9.5px;font-weight:600;
+  color:#fff;background:rgba(20,18,14,.62);padding:3px 7px;border-radius:5px;
+  backdrop-filter:blur(5px)}
+.playbar{position:absolute;left:0;right:0;bottom:0;display:flex;align-items:center;
+  gap:8px;padding:7px 10px 8px;color:#fff;
+  background:linear-gradient(180deg,rgba(20,18,14,0),rgba(20,18,14,.72))}
+.playbar .t{font-size:10px;font-variant-numeric:tabular-nums;opacity:.92}
+.pbar{flex:1 1 auto;height:3px;border-radius:99px;background:rgba(255,255,255,.3);
+  position:relative;overflow:hidden}
+.pbar i{position:absolute;left:0;top:0;bottom:0;background:var(--flame);border-radius:99px}
+.cmp{position:absolute;inset:0;clip-path:inset(0 0 0 50%)}
+.cmpline{position:absolute;top:0;bottom:0;width:2px;background:var(--paper);
+  box-shadow:0 0 0 1px rgba(27,26,23,.28);cursor:ew-resize;touch-action:none}
+.cmpline i{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);
+  width:26px;height:26px;border-radius:50%;background:var(--paper);
+  border:1.5px solid var(--flame);display:flex;align-items:center;justify-content:center;
+  color:var(--flame)}
+.tag{position:absolute;top:9px;font-size:9.5px;font-weight:650;padding:3px 7px;
+  border-radius:5px;background:rgba(20,18,14,.6);color:#fff;backdrop-filter:blur(5px)}
+.tag.a{left:9px}.tag.b{right:9px}
+/* 动态水印：追踪状态药丸 + 时间轴关键帧菱形 */
+.vphase{position:absolute;left:10px;top:10px;z-index:4;display:inline-flex;align-items:center;
+  gap:5px;font-size:9.5px;font-weight:650;color:#fff;background:rgba(20,18,14,.62);
+  padding:4px 8px;border-radius:99px;backdrop-filter:blur(5px)}
+.vphase .i{width:11px;height:11px;color:#FFB27A}
+.kfl{position:absolute;left:0;right:0;bottom:1px;height:10px;z-index:3;pointer-events:none}
+.kfl i{position:absolute;bottom:0;width:8px;height:8px;border-radius:1.5px;
+  background:var(--flame);box-shadow:0 0 0 1.5px rgba(255,255,255,.9);
+  transform:translateX(-50%) rotate(45deg);pointer-events:auto;cursor:grab}
+.kfl i:hover{background:var(--ink)}
+
+/* 工具托盘 */
+.tools{display:flex;gap:6px;flex:0 0 auto}
+.tool{flex:1 1 0;display:flex;flex-direction:column;align-items:center;gap:5px;
+  padding:11px 2px 10px;border-radius:11px;border:1px solid var(--line);
+  background:var(--paper);color:var(--ink2);font-size:10px;
+  transition:background .16s ease,border-color .16s ease,color .16s ease}
+.tool .i{width:19px;height:19px}
+.tool.on{background:var(--flame-soft);border-color:var(--flame);color:var(--flame-txt);
+  font-weight:650}
+.tool:active{transform:scale(.97)}
+.tool[disabled]{opacity:.4}
+
+/* 滑块 */
+.rng{display:flex;align-items:center;gap:10px;flex:0 0 auto;font-size:10.5px;
+  color:var(--ink3)}
+.rng input[type=range]{-webkit-appearance:none;appearance:none;flex:1 1 auto;
+  height:22px;background:transparent;cursor:pointer}
+.rng input[type=range]::-webkit-slider-runnable-track{height:3px;border-radius:99px;
+  background:var(--line)}
+.rng input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:15px;
+  height:15px;border-radius:50%;background:var(--flame);margin-top:-6px;
+  border:2.5px solid var(--paper);box-shadow:0 1px 3px rgba(27,26,23,.3)}
+.rng input[type=range]:disabled::-webkit-slider-thumb{background:var(--line)}
+.rng .v{width:34px;text-align:right;font-variant-numeric:tabular-nums;
+  color:var(--ink2);font-weight:600}
+
+/* 底部操作区 */
+.foot{flex:0 0 auto;display:flex;gap:9px;padding:11px 16px 14px;
+  border-top:1px solid var(--line2);background:var(--cream)}
+.btn{flex:1 1 0;height:44px;border-radius:12px;display:flex;align-items:center;
+  justify-content:center;gap:7px;font-size:13px;font-weight:650;
+  letter-spacing:-.005em;transition:transform .12s ease,background .16s ease,
+  border-color .16s ease,opacity .16s ease}
+.btn.ghost{border:1px solid var(--line);background:var(--paper);color:var(--ink2)}
+.btn.ghost:hover{border-color:var(--ink3);color:var(--ink)}
+.btn.pri{background:var(--flame);color:#fff}
+[data-theme="dark"] .btn.pri{color:#17140F}
+.btn.pri:hover{filter:brightness(1.07)}
+.btn:active{transform:scale(.985)}
+.btn.wide{flex:1 1 auto}
+.btn.sm{height:38px;font-size:12px;flex:0 0 auto;padding:0 16px}
+
+/* 分段控件 */
+.seg{display:flex;gap:3px;padding:3px;border-radius:10px;background:var(--line2);
+  flex:0 0 auto}
+.seg button{flex:1 1 0;height:28px;border-radius:8px;font-size:11px;color:var(--ink2);
+  display:flex;align-items:center;justify-content:center;transition:all .16s ease}
+.seg button.on{background:var(--paper);color:var(--ink);font-weight:650;
+  box-shadow:0 1px 2px rgba(27,26,23,.12)}
+.seg.tiny{background:var(--paper);border:1px solid var(--line);padding:2px}
+.seg.tiny button{height:26px;font-size:10.5px}
+.seg.tiny button.on{background:var(--ink);color:var(--cream)}
+
+/* 首页 */
+.hd{display:flex;align-items:flex-start;gap:10px;flex:0 0 auto;padding:2px 1px 0}
+.hd .mk{width:36px;height:36px;border-radius:11px;background:var(--flame);
+  display:flex;align-items:center;justify-content:center;color:#fff;flex:0 0 auto}
+[data-theme="dark"] .hd .mk{color:#17140F}
+.hd h1{font-size:16.5px;font-weight:700;letter-spacing:-.015em}
+.hd p{font-size:10.5px;color:var(--ink3);margin-top:3px;display:flex;align-items:center;
+  gap:5px}
+.hd .dot{width:5px;height:5px;border-radius:50%;background:var(--flame)}
+.hero{background:var(--paper);border:1px solid var(--line);border-radius:16px;
+  padding:15px 15px 14px;flex:0 0 auto}
+.hero h3{font-size:18px;font-weight:700;line-height:1.32;letter-spacing:-.02em}
+.hero h3 em{font-style:normal;color:var(--flame-txt)}
+.hero ul{list-style:none;display:flex;gap:12px;margin-top:11px;flex-wrap:wrap}
+.hero li{font-size:10.5px;color:var(--ink2);display:flex;align-items:center;gap:4px}
+.hero li .i{width:13px;height:13px;color:var(--flame)}
+.entry{display:grid;grid-template-columns:1fr 1fr;gap:9px;flex:0 0 auto}
+.ecard{text-align:left;padding:13px 13px 12px;border-radius:14px;display:flex;
+  flex-direction:column;gap:9px;border:1px solid var(--line);background:var(--paper);
+  transition:border-color .16s ease,transform .12s ease}
+.ecard:active{transform:scale(.985)}
+.ecard .top{display:flex;align-items:center;justify-content:space-between}
+.ecard .box{width:34px;height:34px;border-radius:10px;display:flex;align-items:center;
+  justify-content:center}
+.ecard.a .box{background:var(--flame);color:#fff}
+[data-theme="dark"] .ecard.a .box{color:#17140F}
+.ecard.b .box{border:1px solid var(--line);color:var(--ink2)}
+.ecard h4{font-size:13px;font-weight:650;letter-spacing:-.01em}
+.ecard p{font-size:10px;color:var(--ink3);line-height:1.55;margin-top:3px}
+.ecard .go{color:var(--flame-txt)}
+.feat{display:grid;grid-template-columns:repeat(4,1fr);gap:2px;flex:0 0 auto;
+  border-top:1px solid var(--line2);border-bottom:1px solid var(--line2);padding:11px 0}
+.feat div{display:flex;flex-direction:column;align-items:center;gap:5px;text-align:center}
+.feat .i{width:17px;height:17px;color:var(--flame-txt)}
+.feat b{font-size:10px;font-weight:600}
+.feat span{font-size:9px;color:var(--ink3)}
+.sec{display:flex;align-items:center;justify-content:space-between;flex:0 0 auto;
+  padding:0 1px}
+.sec h3{font-size:12.5px;font-weight:650}
+.sec button{font-size:10.5px;color:var(--flame-txt);font-weight:600;
+  display:flex;align-items:center;gap:2px}
+.samples{display:grid;grid-template-columns:1fr 1fr;gap:8px;flex:0 0 auto}
+.samples button{position:relative;aspect-ratio:16/10;border-radius:11px;overflow:hidden;
+  border:1px solid var(--line);background-size:cover;background-position:center;
+  text-align:left}
+.samples button::after{content:"";position:absolute;inset:0;
+  background:linear-gradient(180deg,rgba(20,18,14,.06),rgba(20,18,14,.82))}
+.samples button .sgo{position:absolute;left:8px;top:8px;z-index:1;font-size:9px;
+  font-weight:650;color:#fff;background:var(--flame);padding:3px 7px;border-radius:5px}
+.samples button .cap{position:absolute;left:8px;right:8px;bottom:7px;z-index:1;
+  font-size:10.5px;font-weight:650;color:#fff}
+.samples button .cap em{display:block;font-style:normal;font-weight:500;font-size:9px;
+  color:rgba(255,255,255,.74);margin-top:2px}
+.recents{display:flex;flex-direction:column;gap:7px;flex:1 1 auto;min-height:0;
+  overflow:hidden}
+.rec{display:flex;align-items:center;gap:10px;padding:8px;border-radius:11px;
+  border:1px solid var(--line);background:var(--paper);text-align:left;width:100%}
+.rec .th{width:46px;height:38px;border-radius:8px;background-size:cover;
+  background-position:center;flex:0 0 auto}
+.rec .tx{flex:1 1 auto;min-width:0}
+.rec .tx b{display:block;font-size:11.5px;font-weight:600;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.rec .tx span{display:block;font-size:10px;color:var(--ink3);margin-top:2px}
+
+/* 提示条 */
+.hint{font-size:10px;color:var(--ink3);text-align:center;flex:0 0 auto;
+  display:flex;align-items:center;justify-content:center;gap:5px}
+
+/* 识别到的水印清单 */
+.blk{display:flex;flex-direction:column;flex:0 0 auto}
+.blk .cap{display:flex;align-items:center;justify-content:space-between;
+  font-size:10.5px;color:var(--ink3);padding:0 1px 5px}
+.blk .cap b{color:var(--flame-txt);font-weight:650}
+.drow{display:flex;align-items:center;gap:9px;padding:9px 0;text-align:left;
+  border-bottom:1px solid var(--line2);width:100%}
+.drow:last-child{border-bottom:0}
+.ck2{width:16px;height:16px;border-radius:5px;border:1.5px solid var(--flame);
+  background:var(--flame);color:#fff;display:flex;align-items:center;justify-content:center;
+  flex:0 0 auto;transition:background .15s ease,border-color .15s ease}
+.ck2 svg{width:11px;height:11px}
+[aria-checked="false"] > .ck2{background:transparent;border-color:var(--line);
+  color:transparent}
+.drow .tx{flex:1 1 auto;min-width:0}
+.drow .tx b{display:block;font-size:11.5px;font-weight:600}
+.drow .tx span{display:block;font-size:9.5px;color:var(--ink3);margin-top:2px;
+  font-variant-numeric:tabular-nums}
+.drow .cf{font-size:10px;color:var(--flame-txt);font-weight:650;
+  font-variant-numeric:tabular-nums;flex:0 0 auto}
+
+/* 结果页缩略图 */
+.thumbpair{display:grid;grid-template-columns:1fr 1fr;gap:9px;flex:0 0 auto}
+.tp{position:relative;aspect-ratio:5/3;border-radius:11px;overflow:hidden;
+  border:1px solid var(--line);background-size:cover;background-position:center}
+.tp .cap{position:absolute;left:7px;bottom:6px;font-size:9.5px;font-weight:650;
+  color:#fff;background:rgba(20,18,14,.6);padding:2.5px 6px;border-radius:4px}
+.meta{display:flex;align-items:center;gap:0;flex:0 0 auto;font-size:10px;
+  color:var(--ink3);border-top:1px solid var(--line2);padding-top:10px}
+.meta div{flex:1 1 0;text-align:center;border-right:1px solid var(--line2)}
+.meta div:last-child{border-right:0}
+.meta b{display:block;font-size:11.5px;color:var(--ink);font-weight:650;
+  margin-top:2px;font-variant-numeric:tabular-nums}
+
+/* 时间轴 */
+.strip{display:flex;gap:2px;height:44px;flex:0 0 auto;border-radius:9px;
+  overflow:hidden;position:relative;background:var(--line2)}
+.strip .cell{flex:1 1 0;background-size:cover;background-position:center;
+  filter:saturate(.72) brightness(.9)}
+.strip .band{position:absolute;top:0;bottom:0;border:2px solid var(--flame);
+  border-radius:6px;background:rgba(196,85,27,.16);cursor:grab;touch-action:none}
+.strip .band .h{position:absolute;top:0;bottom:0;width:12px;background:var(--flame);
+  display:flex;align-items:center;justify-content:center;cursor:ew-resize}
+.strip .band .h.l{left:-2px;border-radius:6px 0 0 6px}
+.strip .band .h.r{right:-2px;border-radius:0 6px 6px 0}
+.strip .band .h::after{content:"";width:2px;height:12px;background:rgba(255,255,255,.75);
+  border-radius:2px}
+.trail{display:flex;justify-content:space-between;font-size:9px;color:var(--ink3);
+  font-variant-numeric:tabular-nums;flex:0 0 auto;padding:0 1px;margin-top:-6px}
+
+/* 环 */
+.ring{position:relative;width:148px;height:148px;flex:0 0 auto;margin:0 auto}
+.ring svg{width:100%;height:100%;transform:rotate(-90deg)}
+.ring .tr{stroke:var(--line2)}
+.ring .pr{stroke:var(--flame);transition:stroke-dashoffset .12s linear}
+.ring .ctr{position:absolute;inset:0;display:flex;flex-direction:column;
+  align-items:center;justify-content:center}
+.ring .pct{font-size:34px;font-weight:700;letter-spacing:-.03em;
+  font-variant-numeric:tabular-nums;line-height:1}
+.ring .pct i{font-size:15px;font-style:normal;font-weight:600;color:var(--ink3);
+  margin-left:1px}
+.ring .lbl{font-size:10px;color:var(--ink3);margin-top:5px}
+.steps{display:flex;flex-direction:column;flex:0 0 auto}
+.step{display:flex;align-items:center;gap:10px;padding:8px 0;
+  border-bottom:1px solid var(--line2)}
+.step:last-child{border-bottom:0}
+.step .mk{width:19px;height:19px;border-radius:50%;border:1.5px solid var(--line);
+  flex:0 0 auto;display:flex;align-items:center;justify-content:center;
+  color:var(--ink3);font-size:9.5px;font-weight:700}
+.step.run .mk{border-color:var(--flame);color:var(--flame)}
+.step.done .mk{background:var(--flame);border-color:var(--flame);color:#fff}
+[data-theme="dark"] .step.done .mk{color:#17140F}
+.step .tx{flex:1 1 auto;min-width:0}
+.step .tx b{display:block;font-size:11.5px;font-weight:600}
+.step.pend .tx b{color:var(--ink3);font-weight:500}
+.step .tx span{font-size:9.5px;color:var(--ink3)}
+.step .pc{font-size:10.5px;color:var(--ink3);font-variant-numeric:tabular-nums;
+  font-weight:600}
+.step.run .pc{color:var(--flame-txt)}
+.mini{height:3px;border-radius:99px;background:var(--line2);margin-top:5px;
+  overflow:hidden}
+.mini i{display:block;height:100%;background:var(--flame);border-radius:99px;
+  width:0;transition:width .12s linear}
+
+/* 历史 */
+.search{height:34px;border-radius:10px;background:var(--paper);border:1px solid var(--line);
+  display:flex;align-items:center;gap:8px;padding:0 11px;color:var(--ink3);
+  font-size:11.5px;flex:0 0 auto}
+.hitem{display:flex;align-items:center;gap:10px;padding:9px;border-radius:12px;
+  border:1px solid var(--line);background:var(--paper);text-align:left;width:100%;
+  transition:border-color .16s ease}
+.hitem .th{position:relative;width:54px;height:54px;border-radius:10px;flex:0 0 auto;
+  background-size:cover;background-position:center;overflow:hidden}
+.hitem .th em{position:absolute;right:3px;bottom:3px;font-size:8px;font-style:normal;
+  font-weight:700;color:#fff;background:rgba(20,18,14,.62);padding:1.5px 4px;
+  border-radius:3px;font-variant-numeric:tabular-nums}
+.hitem .tx{flex:1 1 auto;min-width:0}
+.hitem .tx b{display:block;font-size:12px;font-weight:600;white-space:nowrap;
+  overflow:hidden;text-overflow:ellipsis}
+.hitem .tx .m{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--ink3);
+  margin-top:4px}
+.hitem .tx .ok{color:var(--flame-txt);font-weight:600}
+.hitem .tx .cx{color:var(--ink2)}
+.hitem .tx .sz{font-size:9.5px;color:var(--ink3);margin-top:3px;
+  font-variant-numeric:tabular-nums}
+.hitem .del{width:30px;height:30px;border-radius:9px;flex:0 0 auto;display:none;
+  align-items:center;justify-content:center;color:var(--danger);
+  border:1px solid var(--line)}
+.managing .hitem .del{display:flex}
+.managing .hitem .chev{display:none}
+.chev{color:var(--line);flex:0 0 auto;display:flex}
+.empty{flex:1 1 auto;display:flex;flex-direction:column;align-items:center;
+  justify-content:center;gap:8px;color:var(--ink3);font-size:11.5px;text-align:center}
+.empty .i{width:26px;height:26px}
+
+/* 我的 / 设置 */
+.mecard{display:flex;align-items:center;gap:11px;padding:13px;border-radius:15px;
+  background:var(--paper);border:1px solid var(--line);flex:0 0 auto}
+.mecard .av{width:38px;height:38px;border-radius:11px;background:var(--flame);
+  display:flex;align-items:center;justify-content:center;color:#fff}
+[data-theme="dark"] .mecard .av{color:#17140F}
+.mecard b{display:block;font-size:13px;font-weight:650}
+.mecard span{font-size:10.5px;color:var(--ink3);display:block;margin-top:3px}
+.quota{display:flex;align-items:baseline;gap:5px;margin-left:auto;font-size:10.5px;
+  color:var(--ink3)}
+.quota b{font-size:14px;font-weight:700;color:var(--ink);font-variant-numeric:tabular-nums}
+.bar2{height:4px;border-radius:99px;background:var(--line2);overflow:hidden;
+  margin-top:9px}
+.bar2 i{display:block;height:100%;width:62%;background:var(--flame);border-radius:99px}
+.mehead{display:flex;align-items:center;gap:10px;padding:14px;border-radius:15px;
+  background:var(--paper);border:1px solid var(--line);flex:0 0 auto}
+.mehead .av{width:44px;height:44px;border-radius:13px;background:var(--flame-soft);
+  border:1px solid var(--flame);display:flex;align-items:center;justify-content:center;
+  color:var(--flame-txt);flex:0 0 auto}
+.mehead b{font-size:14px;font-weight:700;letter-spacing:-.01em}
+.mehead span{display:block;font-size:10.5px;color:var(--ink3);margin-top:3px}
+.mehead .stat{margin-left:auto;text-align:right}
+.mehead .stat b{font-size:15px;font-variant-numeric:tabular-nums}
+.mehead .stat span{margin-top:1px}
+.foot-note{font-size:9.5px;color:var(--ink3);text-align:center;line-height:1.7;
+  flex:0 0 auto;padding-top:14px;margin-top:auto}
+.foot-note b{color:var(--ink2);font-weight:600}
+
+/* 底部弹层 */
+.scrim{position:absolute;inset:0;background:rgba(20,18,14,.42);opacity:0;
+  pointer-events:none;transition:opacity .22s ease;z-index:20}
+.scrim.on{opacity:1;pointer-events:auto}
+.sheet{position:absolute;left:0;right:0;bottom:0;z-index:21;background:var(--paper);
+  border-radius:20px 20px 0 0;padding:8px 16px 18px;
+  transform:translateY(102%);transition:transform .28s cubic-bezier(.22,1,.36,1);
+  border-top:1px solid var(--line)}
+.sheet.on{transform:none}
+.sheet .grip{width:34px;height:4px;border-radius:99px;background:var(--line);
+  margin:0 auto 12px}
+.sheet h3{font-size:13px;font-weight:650;margin-bottom:8px}
+.opt{display:flex;align-items:center;gap:10px;padding:12px 2px;
+  border-bottom:1px solid var(--line2);width:100%;text-align:left;font-size:12.5px;
+  color:var(--ink2)}
+.opt:last-child{border-bottom:0}
+.opt b{font-weight:600;color:var(--ink)}
+.opt .ck{margin-left:auto;color:var(--flame);opacity:0}
+.opt.on .ck{opacity:1}
+.opt span.sub{font-size:10px;color:var(--ink3);display:block;margin-top:2px}
+
+/* 吐司 */
+.toasts{position:absolute;left:0;right:0;bottom:88px;z-index:30;display:flex;
+  flex-direction:column;align-items:center;gap:6px;pointer-events:none}
+.toast{font-size:11px;font-weight:600;color:#fff;background:rgba(20,18,14,.9);
+  padding:8px 14px;border-radius:99px;display:flex;align-items:center;gap:6px;
+  animation:tin .22s cubic-bezier(.22,1,.36,1);max-width:300px;
+  backdrop-filter:blur(6px)}
+.toast .i{width:14px;height:14px;color:var(--flame)}
+.toast.out{animation:tout .22s ease forwards}
+@keyframes tin{from{transform:translateY(8px);opacity:0}to{transform:none;opacity:1}}
+@keyframes tout{to{transform:translateY(6px);opacity:0}}
+
+@media (prefers-reduced-motion:reduce){
+  *{animation-duration:.01ms !important;transition-duration:.01ms !important}
+}
+@media (max-width:1080px){
+  body{padding:24px 16px 48px}
+  .stage{flex-direction:column;align-items:center;gap:34px}
+  .rail{width:100%;max-width:404px}
+  .idx{display:grid;grid-template-columns:1fr 1fr;gap:2px}
+}
+</style>
+</head>
+<body>
+<div class="stage">
+
+  <!-- ══════ 规格轨 ══════ -->
+  <aside class="rail">
+    <h1>水印工坊</h1>
+    <p class="sub">真机交互原型 · 8 屏<br>点击轨道跳屏，屏内一切控件可实际操作</p>
+
+    <div class="block">
+      <h2>屏幕</h2>
+      <div class="idx" id="idx"></div>
+    </div>
+
+    <div class="block">
+      <h2>设计令牌</h2>
+      <div class="tokens">
+        <div class="sw"><i style="background:#F4EFE5"></i><b>奶油白</b><span>#F4EFE5</span></div>
+        <div class="sw"><i style="background:#FFFDF8"></i><b>纸白</b><span>#FFFDF8</span></div>
+        <div class="sw"><i style="background:#1B1A17"></i><b>炭黑</b><span>#1B1A17</span></div>
+        <div class="sw"><i style="background:#C4551B"></i><b>焦橙</b><span>#C4551B</span></div>
+        <div class="sw"><i style="background:#F7E4D4"></i><b>橙雾</b><span>#F7E4D4</span></div>
+      </div>
+    </div>
+
+    <p class="note">
+      <b>可以真的点。</b>切换主题模式会让整机换肤；拖选框、拖时间轴、拖对比分界线都生效；
+      视频进度是真跑的一条动画，取消按钮会真的中断它。
+    </p>
+  </aside>
+
+  <!-- ══════ 真机 ══════ -->
+  <div class="rig">
+  <div class="device">
+  <div class="screen" id="screen" data-theme="light">
+
+    <div class="status">
+      <span class="num">9:41</span>
+      <div class="punch"></div>
+      <div class="ic">
+        <svg class="i s" viewBox="0 0 24 24"><path d="M4.4 19v-3.4M9.6 19v-7.2M14.8 19v-11M20 19V4.6"/></svg>
+        <svg class="i s" viewBox="0 0 24 24"><path d="M2.5 9.5a15 15 0 0 1 19 0"/><path d="M6 13a10 10 0 0 1 12 0"/><path d="M9.5 16.3a5 5 0 0 1 5 0"/><circle cx="12" cy="19.4" r=".9" fill="currentColor" stroke="none"/></svg>
+        <svg class="i s" viewBox="0 0 24 24"><rect x="2.5" y="7.5" width="16" height="9" rx="2.4"/><rect x="4.8" y="9.8" width="9.4" height="4.4" rx="1" fill="currentColor" stroke="none"/><path d="M21 11v2"/></svg>
+      </div>
+    </div>
+
+    <div class="body" id="body">
+
+      <!-- ── 01 首页 ── -->
+      <section class="panel" id="p-home">
+        <div class="scr" style="gap:13px">
+          <div class="hd">
+            <span class="mk"><svg class="i l" viewBox="0 0 24 24"><path d="M12 3.2 4.5 6.6v6.2c0 4.3 3 7.9 7.5 9.2 4.5-1.3 7.5-4.9 7.5-9.2V6.6z"/><path d="m8.8 12.2 2.2 2.2 4.2-4.4"/></svg></span>
+            <div style="flex:1 1 auto">
+              <h1>水印工坊</h1>
+              <p><span class="dot"></span>纯本地去水印 · 文件不必上传</p>
+            </div>
+            <button class="icb" data-tip="去设置" onclick="goTab('me')">
+              <svg class="i" viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
+            </button>
+          </div>
+
+          <div class="hero">
+            <h3>简单三步<br>去掉图片与视频里的水印</h3>
+            <ul>
+              <li><svg class="i" viewBox="0 0 24 24"><rect x="4.5" y="10" width="15" height="10" rx="2"/><path d="M8 10V7.5a4 4 0 0 1 8 0V10"/></svg>本地处理</li>
+              <li><svg class="i" viewBox="0 0 24 24"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>高质量修复</li>
+              <li><svg class="i" viewBox="0 0 24 24"><path d="M13 3.5 5 14h5.5L10 20.5 18 10h-5.5z"/></svg>快速导出</li>
+            </ul>
+          </div>
+
+          <div class="entry">
+            <button class="ecard a" onclick="go('iEdit')">
+              <div class="top">
+                <span class="box"><svg class="i" viewBox="0 0 24 24"><rect x="3.2" y="3.2" width="17.6" height="17.6" rx="2.6"/><circle cx="8.6" cy="8.6" r="1.7"/><path d="M20.8 15.4 16 10.6l-8 8"/></svg></span>
+                <svg class="i s go" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+              </div>
+              <div>
+                <h4>图片去水印</h4>
+                <p>JPG · PNG · WEBP · HEIC</p>
+              </div>
+            </button>
+            <button class="ecard b" onclick="go('vEdit')">
+              <div class="top">
+                <span class="box"><svg class="i" viewBox="0 0 24 24"><rect x="2.4" y="6" width="13.6" height="12" rx="2.4"/><path d="m21.6 8-5.6 4 5.6 4z"/></svg></span>
+                <svg class="i s go" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+              </div>
+              <div>
+                <h4>视频去水印</h4>
+                <p>MP4 · MOV · AVI · 逐帧</p>
+              </div>
+            </button>
+          </div>
+
+          <div class="feat">
+            <div><svg class="i" viewBox="0 0 24 24"><path d="M12 3 4.8 6.4v6.4c0 4.3 3 7.8 7.2 9 4.2-1.2 7.2-4.7 7.2-9V6.4z"/></svg><b>本地引擎</b><span>不联网</span></div>
+            <div><svg class="i" viewBox="0 0 24 24"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/><path d="M18.5 16.5l.7 1.8 1.8.7-1.8.7-.7 1.8-.7-1.8-1.8-.7 1.8-.7z"/></svg><b>画质优先</b><span>无损导出</span></div>
+            <div><svg class="i" viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="17" rx="2.4"/><path d="M3 9h18M9 20.5v-11"/></svg><b>多格式</b><span>图片+视频</span></div>
+            <div><svg class="i" viewBox="0 0 24 24"><path d="M3.4 13.6H7l2.2-6.2 3.6 12 2.2-5.8h5.6"/></svg><b>动态水印</b><span>逐帧追踪</span></div>
+          </div>
+
+          <div class="sec">
+            <h3>示例素材</h3>
+            <span style="font-size:10px;color:var(--ink3)">预置带水印样张</span>
+          </div>
+          <div class="samples" id="samples"></div>
+
+          <div class="sec">
+            <h3>最近处理</h3>
+            <button onclick="goTab('history')">全部记录
+              <svg class="i s" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+          <div class="recents" id="recents"></div>
+        </div>
+        <nav class="tabbar">
+          <button class="tab on" onclick="goTab('home')"><svg class="i" viewBox="0 0 24 24"><path d="M3.2 10.6 12 3.4l8.8 7.2"/><path d="M5.6 9.6V20h12.8V9.6"/><path d="M10 20v-5h4v5"/></svg>首页</button>
+          <button class="tab" onclick="goTab('history')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.1 2"/></svg>历史</button>
+          <button class="tab" onclick="goTab('me')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.6 20c1.3-3.4 4.2-5.1 7.4-5.1s6.1 1.7 7.4 5.1"/></svg>我的</button>
+        </nav>
+      </section>
+
+      <!-- ── 02 图片去水印 ── -->
+      <section class="panel" id="p-iEdit">
+        <div class="bar">
+          <button class="icb" onclick="back()"><svg class="i" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+          <h2>图片去水印</h2>
+          <span class="sp"></span>
+          <button class="icb" data-tip="重置选区" onclick="resetSel()"><svg class="i" viewBox="0 0 24 24"><path d="M3.6 12a8.4 8.4 0 1 0 2.6-6.1"/><path d="M3.6 4.4v4.4h4.4"/></svg></button>
+        </div>
+        <div class="scr" style="gap:11px;padding-bottom:8px">
+          <div class="media" id="mediaImg">
+            <div class="lyr" id="imgBefore">
+              <div class="ph" style="background-image:url(assets/lake.jpg)"></div>
+              <div class="wm" id="wmImg"><span class="mk"></span>ALPINE&nbsp;STUDIO</div>
+            </div>
+            <div class="lyr" id="imgAfter" style="display:none">
+              <div class="ph" style="background-image:url(assets/lake-clean.png)"></div>
+            </div>
+            <div class="selbox" id="selImg">
+              <span class="lb">水印区域</span>
+              <i class="hd tl"></i><i class="hd tr"></i><i class="hd bl"></i><i class="hd br"></i>
+            </div>
+            <div class="badge">1200 × 896 · 1.2 MB</div>
+          </div>
+          <div class="hint">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M9 11.5V6.8a1.6 1.6 0 0 1 3.2 0v4"/><path d="M12.2 10.8V5.6a1.6 1.6 0 0 1 3.2 0v5.2"/><path d="M15.4 11.4V7.4a1.6 1.6 0 0 1 3.2 0v6.1c0 3.6-2.6 6.1-6.1 6.1-3.1 0-5.6-1.9-5.6-5.1v-3.3a1.5 1.5 0 0 1 3 0v1.3"/></svg>
+            拖动选框框住水印，也可以拉右下角改大小
+          </div>
+          <div class="tools" id="toolsImg">
+            <button class="tool on" data-tool="rect"><svg class="i" viewBox="0 0 24 24"><rect x="3.4" y="3.4" width="17.2" height="17.2" rx="2" stroke-dasharray="4 3"/></svg>矩形选区</button>
+            <button class="tool" data-tool="brush"><svg class="i" viewBox="0 0 24 24"><path d="M16.6 3.4 20.6 7.4 10.4 17.6 6.4 13.6z"/><path d="M6.4 13.6 3.4 20.6l7-3z"/></svg>画笔涂抹</button>
+            <button class="tool" data-tool="eraser"><svg class="i" viewBox="0 0 24 24"><path d="M9.4 20 3.6 14.2a1.4 1.4 0 0 1 0-2l7.6-7.6a1.4 1.4 0 0 1 2 0l5.2 5.2a1.4 1.4 0 0 1 0 2L11.4 20z"/><path d="m8.2 9.6 6.6 6.6"/><path d="M9.4 20h11.2"/></svg>橡皮擦</button>
+            <button class="tool" data-tool="clear"><svg class="i" viewBox="0 0 24 24"><path d="M4.2 12a7.8 7.8 0 1 0 2.4-5.7"/><path d="M4.2 4.8v4h4"/><path d="M12 8.8v3.6l2.6 1.6"/></svg>清除</button>
+          </div>
+          <div class="rng" id="rngWrap">
+            <span>画笔大小</span>
+            <input type="range" id="brush" min="8" max="60" value="26">
+            <span class="v num" id="brushV">26</span>
+          </div>
+          <div class="blk">
+            <div class="cap"><span>识别到 <b>2</b> 处水印</span><span>勾选的会被一起修复</span></div>
+            <button class="drow" aria-checked="true" onclick="toggleCheck(this)">
+              <span class="ck2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4.8 12.4 4.8 4.8 9.6-9.6"/></svg></span>
+              <span class="tx"><b>图形徽标</b><span>源图 120, 620 · 400 × 110</span></span>
+              <span class="cf">置信 96%</span>
+            </button>
+            <button class="drow" aria-checked="true" onclick="toggleCheck(this)">
+              <span class="ck2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4.8 12.4 4.8 4.8 9.6-9.6"/></svg></span>
+              <span class="tx"><b>文字署名</b><span>源图 1000, 766 · 186 × 130</span></span>
+              <span class="cf">置信 91%</span>
+            </button>
+          </div>
+
+          <div class="card" style="padding:2px 13px">
+            <button class="li" onclick="openSheet('format')">
+              <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M8.6 3.6h6.8l4 4v12.8H4.6V3.6z"/><path d="M14.4 3.8v4.2h4.2"/></svg></span>
+              <span class="tx"><b>输出格式</b><span>原图分辨率直接导出</span></span>
+              <span class="rt" id="valFormat">JPG</span>
+              <svg class="i s" style="color:var(--ink3)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+            <button class="li" onclick="openSheet('strength')">
+              <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M4 18V9M10 18V5M16 18v-6M22 18v-3"/></svg></span>
+              <span class="tx"><b>修复强度</b><span>选区外扩半径，越大越干净</span></span>
+              <span class="rt" id="valStrength">标准 · 8 px</span>
+              <svg class="i s" style="color:var(--ink3)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="foot">
+          <button class="btn ghost" onclick="previewImage()">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M2.6 12S6.2 5.6 12 5.6 21.4 12 21.4 12 17.8 18.4 12 18.4 2.6 12 2.6 12z"/><circle cx="12" cy="12" r="2.9"/></svg>
+            <span id="pvLabel">预览效果</span>
+          </button>
+          <button class="btn pri" onclick="runImage(this)">
+            <svg class="i s" viewBox="0 0 24 24"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+            <span>开始修复</span>
+          </button>
+        </div>
+      </section>
+
+      <!-- ── 03 图片修复结果 ── -->
+      <section class="panel" id="p-iResult">
+        <div class="bar">
+          <button class="icb" onclick="go('iEdit')"><svg class="i" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+          <h2>图片修复结果</h2>
+          <span class="sp"></span>
+          <div class="seg tiny" style="width:150px" id="segImg">
+            <button data-cmp="before">修复前</button>
+            <button class="on" data-cmp="compare">对比</button>
+            <button data-cmp="after">修复后</button>
+          </div>
+        </div>
+        <div class="scr" style="gap:11px;padding-bottom:8px">
+          <div class="media" id="mediaCmp">
+            <div class="lyr">
+              <div class="ph" style="background-image:url(assets/lake.jpg)"></div>
+              <div class="wm" id="wmCmp"><span class="mk"></span>ALPINE&nbsp;STUDIO</div>
+            </div>
+            <div class="lyr" id="cmpLayer">
+              <div class="ph" style="background-image:url(assets/lake-clean.png)"></div>
+            </div>
+            <div class="cmpline" id="cmpLine"><i><svg class="i s" viewBox="0 0 24 24"><path d="m9.5 8-3.5 4 3.5 4"/><path d="m14.5 8 3.5 4-3.5 4"/></svg></i></div>
+            <span class="tag a">修复前</span>
+            <span class="tag b">修复后</span>
+          </div>
+          <div class="thumbpair">
+            <div class="tp" id="thumbBefore"><span class="cap">修复前 · 带水印</span></div>
+            <div class="tp" id="thumbAfter"><span class="cap">修复后 · 已重建</span></div>
+          </div>
+          <div class="meta">
+            <div>输出尺寸<b>1200 × 896</b></div>
+            <div>处理耗时<b>1.8 s</b></div>
+            <div>执行位置<b>本机端侧</b></div>
+          </div>
+          <div class="blk">
+            <div class="cap"><span>处理明细</span><span>2 / 2 已重建</span></div>
+            <div class="drow" style="cursor:default">
+              <span class="ck2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4.8 12.4 4.8 4.8 9.6-9.6"/></svg></span>
+              <span class="tx"><b>图形徽标</b><span>邻域纹理克隆 + 高斯羽化</span></span>
+              <span class="cf">已重建</span>
+            </div>
+            <div class="drow" style="cursor:default">
+              <span class="ck2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4.8 12.4 4.8 4.8 9.6-9.6"/></svg></span>
+              <span class="tx"><b>文字署名</b><span>按选区半径 8 px 迭代修补</span></span>
+              <span class="cf">已重建</span>
+            </div>
+          </div>
+
+          <div class="card" style="padding:2px 13px">
+            <button class="li" onclick="goTab('me')">
+              <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M12 3.4l2.4 5 5.6.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.6-.8z"/></svg></span>
+              <span class="tx"><b>输出质量</b><span>跟随「我的 · 处理设置」里的默认值</span></span>
+              <span class="rt">高清</span>
+              <svg class="i s" style="color:var(--ink3)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="foot">
+          <button class="btn ghost" onclick="go('iEdit')">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M3.6 12a8.4 8.4 0 1 0 2.6-6.1"/><path d="M3.6 4.4v4.4h4.4"/></svg>
+            重新修复
+          </button>
+          <button class="btn pri" onclick="saveToAlbum('image')">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M12 4v10.5"/><path d="m7.6 10.5 4.4 4.4 4.4-4.4"/><path d="M4.6 19.6h14.8"/></svg>
+            保存图片
+          </button>
+        </div>
+      </section>
+
+      <!-- ── 04 视频去水印 ── -->
+      <section class="panel" id="p-vEdit">
+        <div class="bar">
+          <button class="icb" onclick="back()"><svg class="i" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+          <h2>视频去水印</h2>
+          <span class="sp"></span>
+          <button class="icb" data-tip="全屏预览" onclick="toast('全屏预览已开启','eye')"><svg class="i" viewBox="0 0 24 24"><path d="M4 9.5V4h5.5"/><path d="M20 14.5V20h-5.5"/><path d="M14.5 4H20v5.5"/><path d="M9.5 20H4v-5.5"/></svg></button>
+        </div>
+        <div class="scr" style="gap:9px;padding-bottom:2px">
+          <div class="media" id="mediaVid">
+            <div class="lyr">
+              <div class="ph" style="background-image:url(assets/cafe.jpg)"></div>
+              <div class="wm plain" id="wmVid">LOGO</div>
+            </div>
+            <span class="vphase" id="vPhase">
+              <svg class="i" viewBox="0 0 24 24"><path d="M3.4 13.6H7l2.2-6.2 3.6 12 2.2-5.8h5.6"/></svg>
+              已自动追踪 · 3 个关键帧
+            </span>
+            <div class="selbox" id="selVid"><span class="lb">水印区域</span></div>
+            <div class="playbar">
+              <button style="color:#fff;display:flex" onclick="togglePlay()">
+                <svg class="i s" id="playIco" viewBox="0 0 24 24"><path d="M7 4.6 19 12 7 19.4z" fill="currentColor" stroke="none"/></svg>
+              </button>
+              <span class="t num" id="vTime">00:08 / 00:30</span>
+              <div class="pbar"><i id="vProg" style="width:27%"></i></div>
+              <span class="t">1×</span>
+            </div>
+          </div>
+
+          <div class="strip" id="strip"></div>
+          <div class="trail">
+            <span id="tStart">起始 00:08</span>
+            <span id="tRange">选区 22s</span>
+            <span id="tEnd">结束 00:30</span>
+          </div>
+
+          <div class="card" style="padding:9px 11px;display:flex;align-items:center;gap:10px">
+            <div style="flex:1 1 auto;min-width:0">
+              <b style="font-size:11.5px;font-weight:600">水印类型 · 逐帧漂移</b>
+              <span style="display:block;font-size:9.5px;color:var(--ink3);margin-top:2px">跟随模式会在每帧重新定位选区</span>
+            </div>
+            <div class="seg tiny" style="width:104px;flex:0 0 auto" id="segTrack">
+              <button data-m="static">静止</button>
+              <button class="on" data-m="track">跟随</button>
+            </div>
+          </div>
+
+          <div class="tools" id="toolsVid">
+            <button class="tool on" data-tool="rect"><svg class="i" viewBox="0 0 24 24"><rect x="3.4" y="3.4" width="17.2" height="17.2" rx="2" stroke-dasharray="4 3"/></svg>矩形选区</button>
+            <button class="tool" data-tool="brush"><svg class="i" viewBox="0 0 24 24"><path d="M16.6 3.4 20.6 7.4 10.4 17.6 6.4 13.6z"/><path d="M6.4 13.6 3.4 20.6l7-3z"/></svg>画笔涂抹</button>
+            <button class="tool" data-tool="eraser"><svg class="i" viewBox="0 0 24 24"><path d="M9.4 20 3.6 14.2a1.4 1.4 0 0 1 0-2l7.6-7.6a1.4 1.4 0 0 1 2 0l5.2 5.2a1.4 1.4 0 0 1 0 2L11.4 20z"/><path d="m8.2 9.6 6.6 6.6"/><path d="M9.4 20h11.2"/></svg>橡皮擦</button>
+            <button class="tool" data-tool="clear"><svg class="i" viewBox="0 0 24 24"><path d="M4.2 12a7.8 7.8 0 1 0 2.4-5.7"/><path d="M4.2 4.8v4h4"/><path d="M12 8.8v3.6l2.6 1.6"/></svg>清除</button>
+          </div>
+
+          <div class="blk">
+            <div class="cap"><span>全片追踪到 <b>2</b> 处水印</span><span>关键帧 3 个</span></div>
+            <button class="drow" aria-checked="true" onclick="toggleCheck(this)">
+              <span class="ck2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4.8 12.4 4.8 4.8 9.6-9.6"/></svg></span>
+              <span class="tx"><b>角标 LOGO</b><span>轨迹 900 帧 · 累计位移 96 px</span></span>
+              <span class="cf">置信 94%</span>
+            </button>
+            <button class="drow" aria-checked="true" onclick="toggleCheck(this)">
+              <span class="ck2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4.8 12.4 4.8 4.8 9.6-9.6"/></svg></span>
+              <span class="tx"><b>文字署名</b><span>轨迹 900 帧 · 累计位移 24 px</span></span>
+              <span class="cf">置信 88%</span>
+            </button>
+          </div>
+
+          <div class="card" style="padding:2px 13px">
+            <button class="li" onclick="goTab('me')">
+              <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M12 3.4l2.4 5 5.6.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.6-.8z"/></svg></span>
+              <span class="tx"><b>输出质量</b><span>沿用「我的 · 处理设置」里的默认值</span></span>
+              <span class="rt">高清</span>
+              <svg class="i s" style="color:var(--ink3)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="foot">
+          <button class="btn ghost" onclick="togglePlay()">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M7 4.6 19 12 7 19.4z" fill="currentColor" stroke="none"/></svg>
+            预览
+          </button>
+          <button class="btn pri" onclick="go('vProgress');startVideo()">
+            <svg class="i s" viewBox="0 0 24 24"><path d="m12 3 1.9 5.1L19 10l-5.1 1.9L12 17l-1.9-5.1L5 10l5.1-1.9z"/></svg>
+            开始处理
+          </button>
+        </div>
+      </section>
+
+      <!-- ── 05 正在处理视频 ── -->
+      <section class="panel" id="p-vProgress">
+        <div class="bar">
+          <button class="icb" onclick="cancelVideo()"><svg class="i" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+          <h2>正在处理视频</h2>
+        </div>
+        <div class="scr" style="gap:14px;padding-top:20px">
+          <div class="ring">
+            <svg viewBox="0 0 148 148">
+              <circle class="tr" cx="74" cy="74" r="62" fill="none" stroke-width="9"/>
+              <circle class="pr" id="ringPr" cx="74" cy="74" r="62" fill="none" stroke-width="9"
+                stroke-linecap="round" stroke-dasharray="389.6" stroke-dashoffset="389.6"/>
+            </svg>
+            <div class="ctr">
+              <div class="pct num" id="pct">0<i>%</i></div>
+              <div class="lbl" id="eta">正在启动本地引擎</div>
+            </div>
+          </div>
+
+          <div style="text-align:center;flex:0 0 auto">
+            <b style="font-size:13px;font-weight:650">追踪并逐帧去水印中</b>
+            <span style="display:block;font-size:10.5px;color:var(--ink3);margin-top:4px">
+              900 帧 · 3 个关键帧 · 全程本机运算
+            </span>
+          </div>
+
+          <div class="steps" id="steps"></div>
+
+          <div class="card" style="padding:2px 13px">
+            <div class="li" style="cursor:default">
+              <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M3.6 6.4A1.6 1.6 0 0 1 5.2 4.8h13.6a1.6 1.6 0 0 1 1.6 1.6v9.2a1.6 1.6 0 0 1-1.6 1.6H5.2a1.6 1.6 0 0 1-1.6-1.6z"/><path d="m10.6 8.8 4.4 2.6-4.4 2.6z"/></svg></span>
+              <span class="tx"><b>正在处理</b><span>cafe_1080p.mp4 · 1920 × 1080</span></span>
+              <span class="rt num">8.4 MB</span>
+            </div>
+            <div class="li" style="cursor:default">
+              <span class="lead"><svg class="i s" viewBox="0 0 24 24"><rect x="3.4" y="3.4" width="17.2" height="17.2" rx="2" stroke-dasharray="4 3"/></svg></span>
+              <span class="tx"><b>追踪与输出</b><span>00:08 – 00:30 · 轨迹追踪 900 帧</span></span>
+              <span class="rt">22 s</span>
+            </div>
+          </div>
+        </div>
+        <div class="foot">
+          <button class="btn ghost" onclick="cancelVideo()">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M6.5 6.5 17.5 17.5"/><path d="M17.5 6.5 6.5 17.5"/></svg>
+            取消处理
+          </button>
+        </div>
+      </section>
+
+      <!-- ── 06 视频处理结果 ── -->
+      <section class="panel" id="p-vResult">
+        <div class="bar">
+          <button class="icb" onclick="go('vEdit')"><svg class="i" viewBox="0 0 24 24"><path d="m15 5-7 7 7 7"/></svg></button>
+          <h2>视频处理结果</h2>
+          <span class="sp"></span>
+          <div class="seg tiny" style="width:150px" id="segVid">
+            <button data-v="before">修复前</button>
+            <button class="on" data-v="compare">对比</button>
+            <button data-v="after">修复后</button>
+          </div>
+        </div>
+        <div class="scr" style="gap:11px;padding-bottom:8px">
+          <div class="media" id="mediaVRes">
+            <div class="lyr" id="vResBefore">
+              <div class="ph" style="background-image:url(assets/cafe.jpg)"></div>
+              <div class="wm plain" id="wmVRes">LOGO</div>
+            </div>
+            <div class="lyr" id="vResAfter">
+              <div class="ph" style="background-image:url(assets/cafe-clean.png)"></div>
+            </div>
+            <div class="cmpline" id="vResLine"><i><svg class="i s" viewBox="0 0 24 24"><path d="m9.5 8-3.5 4 3.5 4"/><path d="m14.5 8 3.5 4-3.5 4"/></svg></i></div>
+            <span class="tag a">修复前 · 水印随帧移动</span>
+            <span class="tag b">修复后 · 已重建</span>
+            <div class="playbar">
+              <button style="color:#fff;display:flex" onclick="togglePlay2()">
+                <svg class="i s" id="playIco2" viewBox="0 0 24 24"><path d="M7 4.6 19 12 7 19.4z" fill="currentColor" stroke="none"/></svg>
+              </button>
+              <span class="t num" id="vTime2">00:00 / 00:30</span>
+              <div class="pbar"><i id="vProg2" style="width:0%"></i></div>
+            </div>
+          </div>
+          <div class="thumbpair">
+            <div class="tp" id="vthumbBefore"><span class="cap">修复前 · 带水印</span></div>
+            <div class="tp" id="vthumbAfter"><span class="cap">修复后 · 已重建</span></div>
+          </div>
+          <div class="meta">
+            <div>时长<b>00:30</b></div>
+            <div>帧率<b>30 fps</b></div>
+            <div>体积<b>8.4 MB</b></div>
+          </div>
+          <div class="blk">
+            <div class="cap"><span>处理明细</span><span>900 / 900 帧完成</span></div>
+            <div class="drow" style="cursor:default">
+              <span class="ck2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4.8 12.4 4.8 4.8 9.6-9.6"/></svg></span>
+              <span class="tx"><b>角标 LOGO</b><span>逐帧追踪框 · 平均位移 96 px</span></span>
+              <span class="cf">已重建</span>
+            </div>
+            <div class="drow" style="cursor:default">
+              <span class="ck2"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="m4.8 12.4 4.8 4.8 9.6-9.6"/></svg></span>
+              <span class="tx"><b>文字署名</b><span>逐帧重建 · 保留原音轨与封装结构</span></span>
+              <span class="cf">已重建</span>
+            </div>
+          </div>
+
+          <div class="card" style="padding:2px 13px">
+            <button class="li" onclick="goTab('me')">
+              <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M3.4 8.4A1.6 1.6 0 0 1 5 6.8h3.2l1.6 2h7.2a1.6 1.6 0 0 1 1.6 1.6v7.2a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6z"/></svg></span>
+              <span class="tx"><b>保存位置</b><span>默认写入系统相册 Movies 目录</span></span>
+              <span class="rt">系统相册</span>
+              <svg class="i s" style="color:var(--ink3)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="foot">
+          <button class="btn ghost" style="flex:0 0 62px" data-tip="下载到本机" onclick="toast('已下载到本机存储','download')">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M12 4v10.5"/><path d="m7.6 10.5 4.4 4.4 4.4-4.4"/><path d="M4.6 19.6h14.8"/></svg>
+          </button>
+          <button class="btn ghost" style="flex:0 0 62px" data-tip="分享" onclick="toast('已唤起系统分享面板','share')">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M12 3.4v11"/><path d="m8.2 7.2 3.8-3.8 3.8 3.8"/><path d="M5.4 13v5.4a1.6 1.6 0 0 0 1.6 1.6h10a1.6 1.6 0 0 0 1.6-1.6V13"/></svg>
+          </button>
+          <button class="btn pri" onclick="saveToAlbum('video')">
+            <svg class="i s" viewBox="0 0 24 24"><path d="M3.4 8.4A1.6 1.6 0 0 1 5 6.8h3.2l1.6 2h7.2a1.6 1.6 0 0 1 1.6 1.6v7.2a1.6 1.6 0 0 1-1.6 1.6H5a1.6 1.6 0 0 1-1.6-1.6z"/></svg>
+            保存到相册
+          </button>
+        </div>
+      </section>
+
+      <!-- ── 07 历史记录 ── -->
+      <section class="panel" id="p-history">
+        <div class="bar">
+          <h2 style="padding-left:6px">历史记录</h2>
+          <span class="sp"></span>
+          <button class="icb" data-tip="搜索" onclick="toast('按文件名或日期搜索','search')"><svg class="i" viewBox="0 0 24 24"><circle cx="11" cy="11" r="6.6"/><path d="m20 20-4.5-4.5"/></svg></button>
+          <button class="icb" id="manageBtn" data-tip="批量管理" onclick="toggleManage()" style="width:auto;padding:0 9px;font-size:11.5px;font-weight:600">管理</button>
+        </div>
+        <div class="scr" style="gap:10px">
+          <div class="seg" id="filters">
+            <button class="on" data-f="all">全部 6</button>
+            <button data-f="image">图片 4</button>
+            <button data-f="video">视频 2</button>
+          </div>
+          <div id="histList" style="display:flex;flex-direction:column;gap:10px"></div>
+          <div class="card" style="padding:11px 13px;display:flex;gap:9px;align-items:flex-start">
+            <svg class="i s" style="color:var(--flame);margin-top:2px" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 11v5.4"/><path d="M12 7.8v.2"/></svg>
+            <p style="font-size:10px;line-height:1.68;color:var(--ink3)">
+              <b style="color:var(--ink2);font-weight:650">删除记录不会删掉相册里的成品文件</b>
+              两者互相独立，避免误删已经导出的图片与视频。
+            </p>
+          </div>
+        </div>
+        <nav class="tabbar">
+          <button class="tab" onclick="goTab('home')"><svg class="i" viewBox="0 0 24 24"><path d="M3.2 10.6 12 3.4l8.8 7.2"/><path d="M5.6 9.6V20h12.8V9.6"/><path d="M10 20v-5h4v5"/></svg>首页</button>
+          <button class="tab on" onclick="goTab('history')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.1 2"/></svg>历史</button>
+          <button class="tab" onclick="goTab('me')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.6 20c1.3-3.4 4.2-5.1 7.4-5.1s6.1 1.7 7.4 5.1"/></svg>我的</button>
+        </nav>
+      </section>
+
+      <!-- ── 08 我的 ── -->
+      <section class="panel" id="p-me">
+        <div class="bar">
+          <h2 style="padding-left:6px">我的</h2>
+          <span class="sp"></span>
+          <span style="font-size:10.5px;color:var(--ink3);padding-right:10px">通用设置与处理偏好</span>
+        </div>
+        <div class="scr" style="gap:14px">
+          <div class="mehead">
+            <span class="av"><svg class="i l" viewBox="0 0 24 24"><rect x="3" y="3.5" width="18" height="17" rx="2.4"/><circle cx="8.6" cy="8.8" r="1.7"/><path d="M21 15.4 16 10.6l-7.6 7.6"/></svg></span>
+            <div>
+              <b>本地工作台</b>
+              <span>已完成 128 张 · 26 段视频</span>
+            </div>
+            <div class="stat">
+              <b class="num">38.4<span style="font-size:10px;color:var(--ink3)"> MB</span></b>
+              <span>已产出</span>
+            </div>
+          </div>
+
+          <div>
+            <div class="grp">通用设置</div>
+            <div class="card" style="padding:2px 13px;margin-top:8px">
+              <button class="li" onclick="openSheet('theme')">
+                <span class="lead"><svg class="i s" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2.6v2.2M12 19.2v2.2M2.6 12h2.2M19.2 12h2.2M5.4 5.4l1.6 1.6M17 17l1.6 1.6M18.6 5.4 17 7M7 17l-1.6 1.6"/></svg></span>
+                <span class="tx"><b>主题模式</b><span>选择界面明暗外观</span></span>
+                <span class="rt" id="valTheme">浅色模式</span>
+                <svg class="i s" style="color:var(--ink3)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+              </button>
+              <button class="li" id="cacheRow" onclick="clearCache()">
+                <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M4 7h16"/><path d="M9.4 7V5.4a1.4 1.4 0 0 1 1.4-1.4h2.4a1.4 1.4 0 0 1 1.4 1.4V7"/><path d="m6.6 7 1 12.4A1.6 1.6 0 0 0 9.2 21h5.6a1.6 1.6 0 0 0 1.6-1.6L17.4 7"/><path d="M10.4 11v6M13.6 11v6"/></svg></span>
+                <span class="tx"><b>清除缓存</b><span>处理过程中的帧缓存与临时蒙版</span></span>
+                <span class="rt num" id="valCache">128 MB</span>
+                <svg class="i s" style="color:var(--ink3)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+              </button>
+            </div>
+          </div>
+
+          <div>
+            <div class="grp">处理设置</div>
+            <div class="card" style="padding:2px 13px;margin-top:8px">
+              <button class="li" onclick="openSheet('quality')">
+                <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M12 3.4l2.4 5 5.6.8-4 3.9.9 5.5-4.9-2.6-4.9 2.6.9-5.5-4-3.9 5.6-.8z"/></svg></span>
+                <span class="tx"><b>默认输出质量</b><span>影响导出体积与修复细腻度</span></span>
+                <span class="rt" id="valQuality">高清</span>
+                <svg class="i s" style="color:var(--ink3)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+              </button>
+              <div class="li">
+                <span class="lead"><svg class="i s" viewBox="0 0 24 24"><path d="M8.6 3.6h6.8l4 4v12.8H4.6V3.6z"/><path d="M8.6 11.6h6.8M8.6 15.6h4.4"/></svg></span>
+                <span class="tx"><b>同时保留原文件</b><span>导出时另存，不覆盖相册原图</span></span>
+                <button class="sw2" role="switch" aria-checked="false" onclick="toggleSwitch(this)"></button>
+              </div>
+              <div class="li">
+                <span class="lead"><svg class="i s" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.1 2"/></svg></span>
+                <span class="tx"><b>自动保存处理记录</b><span>完成后写入历史，便于回看与重做</span></span>
+                <button class="sw2" role="switch" aria-checked="true" onclick="toggleSwitch(this)"></button>
+              </div>
+            </div>
+          </div>
+
+          <p class="foot-note">
+            <b>水印工坊 v1.0.0</b> · 端侧引擎 OpenCV + MediaCodec<br>
+            图片与视频只在本机内存与沙盒中运算，不接入任何云端接口
+          </p>
+        </div>
+        <nav class="tabbar">
+          <button class="tab" onclick="goTab('home')"><svg class="i" viewBox="0 0 24 24"><path d="M3.2 10.6 12 3.4l8.8 7.2"/><path d="M5.6 9.6V20h12.8V9.6"/><path d="M10 20v-5h4v5"/></svg>首页</button>
+          <button class="tab" onclick="goTab('history')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.6"/><path d="M12 7.4V12l3.1 2"/></svg>历史</button>
+          <button class="tab on" onclick="goTab('me')"><svg class="i" viewBox="0 0 24 24"><circle cx="12" cy="8.2" r="3.6"/><path d="M4.6 20c1.3-3.4 4.2-5.1 7.4-5.1s6.1 1.7 7.4 5.1"/></svg>我的</button>
+        </nav>
+      </section>
+
+    </div>
+
+    <div class="gesture"><i></i></div>
+
+    <div class="scrim" id="scrim" onclick="closeSheet()"></div>
+    <div class="sheet" id="sheet">
+      <div class="grip"></div>
+      <h3 id="sheetTitle"></h3>
+      <div id="sheetBody"></div>
+    </div>
+    <div class="toasts" id="toasts"></div>
+
+  </div>
+  </div>
+  </div>
+</div>
+
+<script>
+/* ══════════ 素材与几何 ══════════ */
+const SRC = { w:1200, h:896 };
+const ASSET = {
+  img:{ before:'assets/lake.jpg', after:'assets/lake-clean.png',
+        main:{ x:120, y:620, w:400, h:110 },    // 图形徽标：放左半区，50% 分屏时左边看得见它
+        extra:{ x:1000, y:766, w:186, h:130 } },// 角落文字署名（烤在图里的）
+  vid:{ before:'assets/cafe.jpg', after:'assets/cafe-clean.png',
+        main:{ x:120, y:600, w:300, h:104 },
+        extra:{ x:992, y:822, w:190, h:60 }, dur:30 }
+};
+const ICONS = {
+  check:'<path d="m4.8 12.4 4.8 4.8 9.6-9.6"/>',
+  close:'<path d="M6.4 6.4 17.6 17.6"/><path d="M17.6 6.4 6.4 17.6"/>',
+  download:'<path d="M12 4v10.5"/><path d="m7.6 10.5 4.4 4.4 4.4-4.4"/><path d="M4.6 19.6h14.8"/>',
+  share:'<path d="M12 3.4v11"/><path d="m8.2 7.2 3.8-3.8 3.8 3.8"/><path d="M5.4 13v5.4a1.6 1.6 0 0 0 1.6 1.6h10a1.6 1.6 0 0 0 1.6-1.6V13"/>',
+  eye:'<path d="M2.6 12S6.2 5.6 12 5.6 21.4 12 21.4 12 17.8 18.4 12 18.4 2.6 12 2.6 12z"/><circle cx="12" cy="12" r="2.9"/>',
+  search:'<circle cx="11" cy="11" r="6.6"/><path d="m20 20-4.5-4.5"/>',
+  trash:'<path d="M4 7h16"/><path d="M9.4 7V5.4a1.4 1.4 0 0 1 1.4-1.4h2.4a1.4 1.4 0 0 1 1.4 1.4V7"/><path d="m6.6 7 1 12.4A1.6 1.6 0 0 0 9.2 21h5.6a1.6 1.6 0 0 0 1.6-1.6L17.4 7"/>'
+};
+const icon = (k,cls='i s') => `<svg class="${cls}" viewBox="0 0 24 24">${ICONS[k]}</svg>`;
+
+/* 源图像素 → 容器像素：与 .ph 的 background-size:cover 完全同一套算法 */
+function mapper(el){
+  const r = el.getBoundingClientRect();
+  const s = Math.max(r.width/SRC.w, r.height/SRC.h);
+  const ox = (r.width - SRC.w*s)/2, oy = (r.height - SRC.h*s)/2;
+  return b => ({ s, left: ox + b.x*s, top: oy + b.y*s, w: b.w*s, h: b.h*s });
+}
+/* 把画上去的水印摆到它在源图里的位置（不论容器多大都对齐） */
+function placeWM(el, b){
+  const r = mapper(el.parentElement.parentElement)(b);
+  el.style.left = r.left + 'px'; el.style.top = r.top + 'px';
+  el.style.width = r.w + 'px'; el.style.height = r.h + 'px';
+  return r;
+}
+/* 让缩略图正好框住水印所在的位置 */
+function cropTo(el, url, box){
+  const r = el.getBoundingClientRect();
+  const cx = box.x + box.w/2, cy = box.y + box.h/2;
+  const z = Math.max(r.width/(box.w*3), r.height/(box.h*3));
+  el.style.backgroundImage = `url(${url})`;
+  el.style.backgroundSize = `${SRC.w*z}px ${SRC.h*z}px`;
+  el.style.backgroundPosition = `${-(cx*z - r.width/2)}px ${-(cy*z - r.height/2)}px`;
+}
+
+/* ══════════ 路由 ══════════ */
+const PANELS = { home:'p-home', iEdit:'p-iEdit', iResult:'p-iResult',
+  vEdit:'p-vEdit', vProgress:'p-vProgress', vResult:'p-vResult',
+  history:'p-history', me:'p-me' };
+const SCREENS = [
+  ['home','首页'],['iEdit','图片去水印'],['iResult','图片修复结果'],['vEdit','视频去水印'],
+  ['vProgress','处理进度'],['vResult','视频处理结果'],['history','历史记录'],['me','我的 · 设置']
+];
+let stack = ['home'];
+let cur = 'home';
+const $ = id => document.getElementById(id);
+
+function show(id, dir){
+  if(!PANELS[id]) return;
+  Object.values(PANELS).forEach(p => $(p).classList.remove('on','slide-r','slide-l'));
+  const el = $(PANELS[id]);
+  el.classList.add('on');
+  if(dir === 'r') el.classList.add('slide-r');
+  if(dir === 'l') el.classList.add('slide-l');
+  cur = id;
+  document.querySelectorAll('#idx button').forEach(b =>
+    b.setAttribute('aria-current', String(b.dataset.s === id)));
+  refit(id);
+}
+/* 选区和裁切依赖真实布局尺寸，必须等面板可见后再算 */
+function refit(id){
+  if(id === 'iEdit'){ placeSel(); syncPreview(); }
+  if(id === 'vEdit'){ placeSelVid(); setVidFrame(playT); }
+  if(id === 'iResult') fitCompare();
+  if(id === 'vResult') fitVideoRes();
+}
+function go(id){ if(id !== cur){ stack.push(cur); show(id,'r'); } }
+function goTab(id){ stack = [id]; show(id,'l'); window.scrollTo({top:0,behavior:'smooth'}); }
+function back(){
+  const prev = stack.pop() || 'home';
+  show(prev,'l');
+}
+/* 轨道 */
+$('idx').innerHTML = SCREENS.map(([k,n]) =>
+  `<button data-s="${k}" aria-current="false" onclick="goTab('${k}')">
+     <i class="k"></i>${n}<span class="tag">${k}</span></button>`).join('');
+
+/* ══════════ 吐司 ══════════ */
+function toast(msg, ic='check'){
+  const t = document.createElement('div');
+  t.className = 'toast';
+  t.innerHTML = icon(ic) + `<span>${msg}</span>`;
+  $('toasts').appendChild(t);
+  setTimeout(() => { t.classList.add('out'); setTimeout(() => t.remove(), 240); }, 2000);
+}
+
+/* ══════════ 主题 ══════════ */
+let themeMode = 'light';
+function applyTheme(){
+  let t = themeMode;
+  if(t === 'system') t = matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  $('screen').setAttribute('data-theme', t);
+}
+matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => {
+  if(themeMode === 'system') applyTheme();
+});
+
+/* ══════════ 底部弹层 ══════════ */
+const SHEETS = {
+  theme:{
+    title:'主题模式',
+    options:[['浅色模式','跟随奶油白界面'],['深色模式','夜间与暗环境中更省电'],
+             ['跟随系统','随系统外观自动切换']],
+    get val(){ return {light:'浅色模式',dark:'深色模式',system:'跟随系统'}[themeMode]; },
+    pick(v){ themeMode = {浅色模式:'light',深色模式:'dark',跟随系统:'system'}[v];
+      applyTheme(); $('valTheme').textContent = v;
+      toast(v === '跟随系统' ? '已切换为跟随系统' : '外观已切换为' + v, 'eye'); }
+  },
+  quality:{
+    title:'默认输出质量',
+    options:[['高清','原始分辨率，修复最细腻'],['标准','长边压到 1080，体积减半'],
+             ['省流','长边压到 720，适合直接发消息']],
+    get val(){ return $('valQuality').textContent; },
+    pick(v){ $('valQuality').textContent = v; toast('默认输出质量：' + v, 'check'); }
+  },
+  format:{
+    title:'输出格式',
+    options:[['JPG','体积小，兼容所有相册与聊天工具'],
+             ['PNG','无损保存，适合继续二次编辑'],
+             ['WEBP','同等画质下体积再小 30%']],
+    get val(){ return $('valFormat').textContent; },
+    pick(v){ $('valFormat').textContent = v; toast('输出格式：' + v, 'check'); }
+  },
+  strength:{
+    title:'修复强度',
+    options:[['轻度 · 4 px','只修选区内，边缘更锐利'],
+             ['标准 · 8 px','默认，选区外扩一圈补纹理'],
+             ['强力 · 14 px','水印边缘有残影时用，纹理更软']],
+    get val(){ return $('valStrength').textContent; },
+    pick(v){ $('valStrength').textContent = v; toast('修复强度已设为 ' + v, 'check'); }
+  }
+};
+let sheetKey = null;
+function openSheet(key){
+  sheetKey = key;
+  const cfg = SHEETS[key];
+  $('sheetTitle').textContent = cfg.title;
+  $('sheetBody').innerHTML = cfg.options.map(([n,s]) =>
+    `<button class="opt${n === cfg.val ? ' on' : ''}" onclick="pickOpt('${n}')">
+       <span><b>${n}</b><span class="sub">${s}</span></span>
+       <span class="ck">${icon('check')}</span></button>`).join('');
+  $('scrim').classList.add('on');
+  $('sheet').classList.add('on');
+}
+function pickOpt(v){ SHEETS[sheetKey].pick(v); closeSheet(); }
+function closeSheet(){
+  $('scrim').classList.remove('on');
+  $('sheet').classList.remove('on');
+}
+function toggleSwitch(el){
+  const on = el.getAttribute('aria-checked') === 'true';
+  el.setAttribute('aria-checked', String(!on));
+}
+
+/* ══════════ 清除缓存 ══════════ */
+let cacheMB = 128;
+function clearCache(){
+  if(cacheMB === 0){ toast('缓存已经清空过了', 'check'); return; }
+  const row = $('valCache');
+  row.textContent = '清理中…';
+  setTimeout(() => {
+    cacheMB = 0;
+    row.textContent = '0 MB';
+    toast('已释放 128 MB 缓存空间', 'trash');
+  }, 900);
+}
+
+/* ══════════ 首页：示例素材与最近处理 ══════════ */
+const SAMPLES = [
+  ['湖边晨雾.jpg','1200 × 896 · 1.2 MB','assets/lake.jpg','iEdit','图片去水印'],
+  ['咖啡馆拉花.mp4','00:30 · 30 fps · 8.4 MB','assets/cafe.jpg','vEdit','视频去水印']
+];
+$('samples').innerHTML = SAMPLES.map(([n,m,u,tgt,act]) =>
+  `<button style="background-image:url(${u})" onclick="go('${tgt}')">
+     <span class="sgo">${act}</span>
+     <span class="cap">${n}<em>${m}</em></span></button>`).join('');
+
+let HIST = [
+  {n:'湖边晨雾.jpg', k:'image', st:'ok', t:'今天 14:20', d:'1200 × 896', sz:'1.2 MB', th:'assets/lake-clean.png'},
+  {n:'咖啡馆拉花.mp4', k:'video', st:'ok', t:'今天 13:10', d:'00:24', sz:'8.4 MB', th:'assets/cafe-clean.png'},
+  {n:'街区立面.jpg', k:'image', st:'cancel', t:'今天 11:32', d:'1200 × 896', sz:'900 KB', th:'assets/city.jpg'},
+  {n:'山脊倒影.jpg', k:'image', st:'ok', t:'昨天 17:40', d:'1200 × 896', sz:'2.1 MB', th:'assets/lake-clean.png'},
+  {n:'拿铁特写.jpg', k:'image', st:'ok', t:'昨天 16:05', d:'1200 × 896', sz:'1.7 MB', th:'assets/cafe-clean.png'},
+  {n:'街区立面.mp4', k:'video', st:'ok', t:'10-15 09:12', d:'00:18', sz:'6.2 MB', th:'assets/city.jpg'}
+];
+function renderRecent(){
+  $('recents').innerHTML = HIST.slice(0,2).map(it => `
+    <button class="rec" onclick="goTab('history')">
+      <span class="th" style="background-image:url(${it.th})"></span>
+      <span class="tx"><b>${it.n}</b>
+        <span>${it.k === 'image' ? '图片修复' : '视频逐帧修复'} · ${
+          it.st === 'ok' ? '已完成' : '已取消'} · ${it.t}</span></span>
+      <svg class="i s" style="color:var(--line)" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg>
+    </button>`).join('');
+}
+
+/* ══════════ 历史记录 ══════════ */
+let filter = 'all', managing = false;
+function renderHist(){
+  const list = HIST.filter(i => filter === 'all' || i.k === filter);
+  $('histList').innerHTML = list.length ? list.map((it,i) => `
+    <div class="hitem" data-i="${HIST.indexOf(it)}">
+      <span class="th" style="background-image:url(${it.th})">
+        <em>${it.k === 'image' ? 'IMG' : it.d}</em></span>
+      <span class="tx">
+        <b>${it.n}</b>
+        <span class="m">${it.k === 'image' ? '图片修复' : '视频逐帧修复'}
+          <span class="${it.st === 'ok' ? 'ok' : 'cx'}">${it.st === 'ok' ? '已完成' : '已取消'}</span>
+          <span style="color:var(--line2)">|</span><span>${it.t}</span></span>
+        <span class="sz">${it.d} · ${it.sz}</span>
+      </span>
+      <button class="del" onclick="event.stopPropagation();delHist(${HIST.indexOf(it)})" title="删除记录">
+        ${icon('trash','i s')}</button>
+      <span class="chev" onclick="openHist(${HIST.indexOf(it)})">
+        <svg class="i s" viewBox="0 0 24 24"><path d="m9 5 7 7-7 7"/></svg></span>
+    </div>`).join('')
+    : `<div class="empty">${icon('search','i')}<span>这个分类下还没有记录<br>处理完成的图片与视频会出现在这里</span></div>`;
+  $('histList').classList.toggle('managing', managing);
+  $('manageBtn').textContent = managing ? '完成' : '管理';
+  const c = (k) => HIST.filter(i => k === 'all' || i.k === k).length;
+  $('filters').querySelectorAll('button').forEach((b,idx) => {
+    const k = ['all','image','video'][idx];
+    b.textContent = `${['全部','图片','视频'][idx]} ${c(k)}`;
+    b.classList.toggle('on', b.dataset.f === filter);
+  });
+}
+function delHist(i){
+  const n = HIST[i].n;
+  HIST.splice(i,1);
+  renderHist(); renderRecent();
+  toast('已删除记录「' + n + '」，导出文件保留', 'trash');
+}
+function openHist(i){
+  const it = HIST[i];
+  if(it.st === 'cancel'){ toast('这是一条已取消的任务，可以重新发起', 'eye'); return; }
+  go(it.k === 'image' ? 'iResult' : 'vResult');
+}
+function toggleManage(){ managing = !managing; renderHist(); }
+function setFilter(f){ filter = f; renderHist(); }
+$('filters').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(b) setFilter(b.dataset.f);
+});
+
+/* ══════════ 图片编辑：选区与预览 ══════════ */
+let sel = null, previewing = false;
+const PAD = 8;
+function placeSel(){
+  const m = $('mediaImg');
+  const r = placeWM($('wmImg'), ASSET.img.main);
+  const el = $('selImg');
+  const l = Math.max(0, r.left - PAD), t = Math.max(20, r.top - PAD);
+  el.style.left = l + 'px'; el.style.top = t + 'px';
+  el.style.width = Math.min(r.w + PAD*2, m.clientWidth - l) + 'px';
+  el.style.height = Math.min(r.h + PAD*2, m.clientHeight - t) + 'px';
+}
+function resetSel(){ placeSel(); previewing = false; syncPreview(); toast('选区已重置', 'check'); }
+function syncPreview(){
+  $('imgBefore').style.display = previewing ? 'none' : '';
+  $('imgAfter').style.display = previewing ? '' : 'none';
+  $('pvLabel').textContent = previewing ? '退出预览' : '预览效果';
+}
+function previewImage(){
+  previewing = !previewing;
+  syncPreview();
+  toast(previewing ? '这是本地修复后的效果预览' : '已回到原图', 'eye');
+}
+/* 拖动 / 缩放选区 */
+(function draggable(){
+  const m = $('mediaImg'), el = $('selImg');
+  let mode = null, sx = 0, sy = 0, box0 = null;
+  el.addEventListener('pointerdown', e => {
+    mode = e.target.classList.contains('br') ? 'resize' : 'move';
+    el.setPointerCapture(e.pointerId);
+    sx = e.clientX; sy = e.clientY;
+    const r = el.getBoundingClientRect(), mr = m.getBoundingClientRect();
+    box0 = { x:r.left-mr.left, y:r.top-mr.top, w:r.width, h:r.height };
+    e.stopPropagation();
+  });
+  el.addEventListener('pointermove', e => {
+    if(!mode) return;
+    const dx = e.clientX - sx, dy = e.clientY - sy;
+    const W = m.clientWidth, H = m.clientHeight;
+    if(mode === 'move'){
+      const x = Math.min(Math.max(0, box0.x + dx), W - box0.w);
+      const y = Math.min(Math.max(0, box0.y + dy), H - box0.h);
+      el.style.left = x + 'px'; el.style.top = y + 'px';
+    } else {
+      const w = Math.min(Math.max(40, box0.w + dx), W - box0.x);
+      const h = Math.min(Math.max(26, box0.h + dy), H - box0.y);
+      el.style.width = w + 'px'; el.style.height = h + 'px';
+    }
+  });
+  const stop = e => { mode = null; try{ el.releasePointerCapture(e.pointerId); }catch(_){} };
+  el.addEventListener('pointerup', stop);
+  el.addEventListener('pointercancel', stop);
+})();
+/* 工具托盘 */
+function bindTools(root, onPick){
+  $(root).addEventListener('click', e => {
+    const b = e.target.closest('.tool'); if(!b) return;
+    if(b.dataset.tool === 'clear'){
+      if(onPick) onPick('clear'); else resetSel();
+      return;
+    }
+    $(root).querySelectorAll('.tool').forEach(t => t.classList.remove('on'));
+    b.classList.add('on');
+    if(onPick) onPick(b.dataset.tool);
+  });
+}
+bindTools('toolsImg', t => {
+  const brushMode = t === 'brush' || t === 'eraser';
+  $('rngWrap').style.opacity = brushMode ? '1' : '.42';
+  $('brush').disabled = !brushMode;
+  $('selImg').style.borderStyle = t === 'brush' ? 'dashed' : 'solid';
+  toast(t === 'brush' ? '画笔涂抹：在水印上拖出覆盖范围'
+      : t === 'eraser' ? '橡皮擦：擦掉多余的涂抹'
+      : '矩形选区：拖出刚好盖住水印的框', 'check');
+});
+bindTools('toolsVid', t => {
+  if(t === 'clear'){ clearKF(); return; }
+  toast(t === 'brush' ? '视频逐帧涂抹：涂抹会随追踪轨迹套用到全片'
+      : t === 'eraser' ? '橡皮擦：擦掉多余的涂抹'
+      : '矩形选区：在关键帧上改框，中间帧由追踪补齐', 'check');
+});
+/* 清掉关键帧就退回静止模式 —— 没有轨迹可跟了 */
+function clearKF(){
+  if(!KF.length){ toast('当前没有关键帧可供清除', 'check'); return; }
+  KF = []; renderKF();
+  setVidMode('static', true);
+  toast('已清除全部关键帧，退回静止模式', 'trash');
+}
+$('brush').addEventListener('input', e => {
+  $('brushV').textContent = e.target.value;
+  $('selImg').querySelector('.hd.br').style.transform = '';
+});
+
+/* 图片修复：走一遍进度再进结果页 */
+function runImage(btn){
+  btn.disabled = true;
+  btn.innerHTML = '<span style="width:14px;height:14px;border:2px solid rgba(255,255,255,.35);border-top-color:#fff;border-radius:50%;display:block;animation:sl .7s linear infinite"></span> 本地修复中';
+  toast('OpenCV 修复运算中，预计 1.8 秒', 'check');
+  setTimeout(() => {
+    btn.disabled = false;
+    btn.innerHTML = icon('check') + ' <span>开始修复</span>';
+    // 把这次结果写进历史
+    HIST.unshift({n:'湖边晨雾-已修复.jpg', k:'image', st:'ok', t:'刚刚',
+      d:'1200 × 896', sz:'1.2 MB', th:ASSET.img.after});
+    renderRecent();
+    stack.push('iEdit'); show('iResult','r');
+    setTimeout(fitCompare, 40);
+  }, 1500);
+}
+function saveToAlbum(kind){
+  const row = kind === 'image'
+    ? {n:'湖边晨雾-已修复.jpg', k:'image', st:'ok', t:'刚刚', d:'1200 × 896', sz:'1.2 MB', th:ASSET.img.after}
+    : {n:'咖啡馆拉花-已修复.mp4', k:'video', st:'ok', t:'刚刚', d:'00:30', sz:'8.4 MB', th:ASSET.vid.after};
+  HIST.unshift(row);
+  renderRecent();
+  toast(kind === 'image' ? '已保存到相册，并写入历史' : '已保存到相册，并写入历史', 'download');
+  setTimeout(() => { goTab('history'); }, 700);
+}
+
+/* ══════════ 对比分屏 ══════════ */
+let split = 50, cmpMode = 'compare';
+function fitCompare(){
+  placeWM($('wmCmp'), ASSET.img.main);
+  cropTo($('thumbBefore'), ASSET.img.before, ASSET.img.main);
+  cropTo($('thumbAfter'), ASSET.img.after, ASSET.img.main);
+  placeSplit();
+}
+function placeSplit(){
+  const m = $('mediaCmp');
+  $('cmpLine').style.left = `calc(${split}% - 1px)`;
+  $('cmpLayer').style.clipPath = `inset(0 0 0 ${split}%)`;
+}
+function setCmp(mode){
+  cmpMode = mode;
+  const m = $('mediaCmp');
+  if(mode === 'before'){ $('cmpLayer').style.clipPath = 'inset(0 0 0 100%)'; }
+  if(mode === 'after'){ $('cmpLayer').style.clipPath = 'inset(0 0 0 0)'; }
+  if(mode === 'compare'){ placeSplit(); }
+  $('cmpLine').style.display = mode === 'compare' ? '' : 'none';
+  $('segImg').querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', b.dataset.cmp === mode));
+}
+$('segImg').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(b) setCmp(b.dataset.cmp);
+});
+(function dragSplit(){
+  const m = $('mediaCmp'), line = $('cmpLine');
+  let on = false;
+  line.addEventListener('pointerdown', e => {
+    on = true; line.setPointerCapture(e.pointerId); e.stopPropagation();
+  });
+  line.addEventListener('pointermove', e => {
+    if(!on) return;
+    const r = m.getBoundingClientRect();
+    split = Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100));
+    placeSplit();
+  });
+  const stop = e => { on = false; try{ line.releasePointerCapture(e.pointerId); }catch(_){} };
+  line.addEventListener('pointerup', stop);
+  line.addEventListener('pointercancel', stop);
+  // 点在画布上也能跳过去
+  m.addEventListener('pointerdown', e => {
+    if(e.target === line || line.contains(e.target)) return;
+    const r = m.getBoundingClientRect();
+    split = Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100));
+    placeSplit();
+  });
+})();
+
+/* ══════════ 视频编辑：时间轴选区 ══════════ */
+const DUR = 30, CELLS = 12;
+let band = { a:3, b:11 };   // 单元索引
+let playing = false, playRAF = 0, playT = 8;
+/* 动态水印：水印在整段视频里漂移，选区必须逐帧给，不再是「一个框套全片」 */
+let vidMode = 'track';
+let KF = [3, 6, 10];        // 关键帧所在的胶片单元
+const VID_DRIFT = 580;      // 水印横向漂移幅度（源图像素）
+function vidBoxAt(t){
+  const u = (t % DUR) / DUR;
+  const k = (1 - Math.cos(u * Math.PI * 2)) / 2;   // 0 → 1 → 0，一个往返
+  return { ...ASSET.vid.main,
+    x: ASSET.vid.main.x + VID_DRIFT * k,
+    y: ASSET.vid.main.y + 90 * k };
+}
+function renderKF(){
+  $('kfl').innerHTML = KF.map((i,n) =>
+    `<i data-n="${n}" style="left:${((i+0.5)/CELLS*100).toFixed(2)}%"></i>`).join('');
+}
+(function buildStrip(){
+  const strip = $('strip');
+  let html = '';
+  for(let i = 0; i < CELLS; i++){
+    const pos = i / (CELLS - 1) * 100;
+    html += `<div class="cell" style="background-image:url(${ASSET.vid.before});background-position:${pos}% center"></div>`;
+  }
+  html += `<div class="band" id="band"><i class="h l"></i><i class="h r"></i></div>`;
+  html += `<div class="kfl" id="kfl"></div>`;
+  strip.innerHTML = html;
+  drawBand();
+  renderKF();
+  bindKF();
+})();
+function drawBand(){
+  const cw = 100 / CELLS;
+  const el = $('band');
+  el.style.left = (band.a * cw) + '%';
+  el.style.width = ((band.b - band.a + 1) * cw) + '%';
+  const s = Math.round(band.a / CELLS * DUR), e = Math.round((band.b + 1) / CELLS * DUR);
+  const f = t => String(Math.floor(t/60)).padStart(2,'0') + ':' + String(t%60).padStart(2,'0');
+  $('tStart').textContent = '起始 ' + f(s);
+  $('tEnd').textContent = '结束 ' + f(e);
+  $('tRange').textContent = '选区 ' + (e - s) + 's';
+}
+(function dragBand(){
+  const strip = $('strip');
+  let mode = null, sx = 0, b0 = null;
+  strip.addEventListener('pointerdown', e => {
+    if(!e.target.closest('#band')) return;
+    const h = e.target.closest('.h');
+    mode = h ? (h.classList.contains('l') ? 'l' : 'r') : 'all';
+    strip.setPointerCapture(e.pointerId);
+    sx = e.clientX; b0 = { ...band };
+    e.stopPropagation();
+  });
+  strip.addEventListener('pointermove', e => {
+    if(!mode) return;
+    const cw = strip.clientWidth / CELLS;
+    const d = Math.round((e.clientX - sx) / cw);
+    if(mode === 'all'){
+      const shift = Math.min(Math.max(-b0.a, d), CELLS - 1 - b0.b);
+      band = { a:b0.a + shift, b:b0.b + shift };
+    } else if(mode === 'l'){
+      band = { a:Math.min(Math.max(0, b0.a + d), b0.b - 1), b:b0.b };
+    } else {
+      band = { b:Math.max(Math.min(CELLS - 1, b0.b + d), b0.a + 1), a:b0.a };
+    }
+    drawBand();
+  });
+  const stop = e => { mode = null; try{ strip.releasePointerCapture(e.pointerId); }catch(_){} };
+  strip.addEventListener('pointerup', stop);
+  strip.addEventListener('pointercancel', stop);
+})();
+function placeSelVid(){
+  const m = $('mediaVid');
+  const box = vidMode === 'track' ? vidBoxAt(playT) : ASSET.vid.main;
+  const r = placeWM($('wmVid'), box);
+  const el = $('selVid');
+  const l = Math.max(0, r.left - PAD), t = Math.max(20, r.top - PAD);
+  el.style.left = l + 'px'; el.style.top = t + 'px';
+  el.style.width = Math.min(r.w + PAD*2, m.clientWidth - l) + 'px';
+  el.style.height = Math.min(r.h + PAD*2, m.clientHeight - t) + 'px';
+  el.querySelectorAll('.hd').forEach(h => h.remove());
+  /* 关键帧四角实心（可编辑），追踪出来的帧四角空心（只读）—— 框角的形状自己会说话 */
+  const gi = Math.min(CELLS - 1, Math.floor(playT / DUR * CELLS));
+  const onKF = vidMode === 'track' && KF.indexOf(gi) >= 0;
+  el.classList.toggle('locked', vidMode === 'track' && !onKF);
+  const lb = el.querySelector('.lb');
+  if(lb) lb.textContent = vidMode === 'track'
+    ? (onKF ? '关键帧 · 可调整' : '已追踪 · 只读')
+    : '静止选区 · 全片套用';
+}
+/* 点关键帧=跳到那一帧，拖关键帧=改它的时间位置 */
+function bindKF(){
+  const layer = $('kfl');
+  let n = -1, sx = 0, moved = false, node = null;
+  layer.addEventListener('pointerdown', e => {
+    const d = e.target.closest('i'); if(!d) return;
+    n = +d.dataset.n; sx = e.clientX; moved = false; node = d;
+    layer.setPointerCapture(e.pointerId); e.stopPropagation();
+  });
+  layer.addEventListener('pointermove', e => {
+    if(n < 0) return;
+    if(!moved && Math.abs(e.clientX - sx) < 3) return;
+    moved = true;
+    const r = $('strip').getBoundingClientRect();
+    const i = Math.min(CELLS-1, Math.max(0, Math.floor((e.clientX - r.left) / r.width * CELLS)));
+    if(i !== KF[n]){
+      KF[n] = i;
+      node.style.left = ((i+0.5)/CELLS*100).toFixed(2) + '%';
+      playT = (i + 0.5) / CELLS * DUR;
+      setVidFrame(playT); placeSelVid();
+    }
+  });
+  const stop = e => {
+    if(n >= 0){
+      if(!moved){                       // 只是点了一下：定位到该关键帧
+        playT = (KF[n] + 0.5) / CELLS * DUR;
+        setVidFrame(playT); placeSelVid();
+        toast('已跳到关键帧 ' + (n+1) + ' · ' + fmt(playT), 'eye');
+      } else {
+        toast('关键帧 ' + (n+1) + ' 已移到 ' + fmt((KF[n]+0.5)/CELLS*DUR), 'check');
+      }
+      renderKF();
+    }
+    n = -1; node = null;
+    try{ layer.releasePointerCapture(e.pointerId); }catch(_){}
+  };
+  layer.addEventListener('pointerup', stop);
+  layer.addEventListener('pointercancel', stop);
+}
+/* 静止 / 跟随：由识别结果自动置位，用户也能手动纠正 */
+function setVidMode(m, silent){
+  vidMode = m;
+  $('segTrack').querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', b.dataset.m === m));
+  const card = $('segTrack').closest('.card');
+  card.querySelector('b').textContent = m === 'track' ? '水印类型 · 逐帧漂移' : '水印类型 · 位置固定';
+  card.querySelector('span').textContent = m === 'track'
+    ? '跟随模式会在每帧重新定位选区' : '静止模式对整个视频套用同一选区';
+  $('vPhase').style.display = m === 'track' ? '' : 'none';
+  const cap = document.querySelector('#p-vEdit .blk .cap');
+  cap.children[0].innerHTML = m === 'track' ? '全片追踪到 <b>2</b> 处水印' : '本帧识别到 <b>2</b> 处水印';
+  cap.children[1].textContent = m === 'track'
+    ? (KF.length ? '关键帧 ' + KF.length + ' 个' : '无关键帧')
+    : '已套用到 900 帧';
+  placeSelVid();
+  if(!silent) toast(m === 'track' ? '已切换为逐帧跟随，选区随水印移动'
+    : '已切换为静止模式，选区不再跟随', 'eye');
+}
+$('segTrack').addEventListener('click', e => {
+  const b = e.target.closest('button');
+  if(b && b.dataset.m !== vidMode) setVidMode(b.dataset.m);
+});
+function setVidFrame(t){
+  $('vTime').textContent = fmt(t) + ' / ' + fmt(DUR);
+  $('vProg').style.width = (t / DUR * 100) + '%';
+}
+const fmt = t => String(Math.floor(t/60)).padStart(2,'0') + ':' + String(Math.floor(t%60)).padStart(2,'0');
+function togglePlay(){
+  playing = !playing;
+  $('playIco').innerHTML = playing
+    ? '<rect x="7" y="5" width="3.6" height="14" rx="1.2" fill="currentColor" stroke="none"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2" fill="currentColor" stroke="none"/>'
+    : '<path d="M7 4.6 19 12 7 19.4z" fill="currentColor" stroke="none"/>';
+  if(playing){
+    toast('正在播放预览，橙色框是水印所在位置', 'eye');
+    let last = performance.now();
+    const step = now => {
+      if(!playing) return;
+      playT += (now - last) / 1000 * 1.6; last = now;
+      if(playT >= DUR) playT = 0;
+      setVidFrame(playT);
+      if(vidMode === 'track') placeSelVid();
+      playRAF = requestAnimationFrame(step);
+    };
+    playRAF = requestAnimationFrame(step);
+  } else { cancelAnimationFrame(playRAF); }
+}
+let playRAF2 = 0, playing2 = false, playT2 = 0;
+function togglePlay2(){
+  playing2 = !playing2;
+  $('playIco2').innerHTML = playing2
+    ? '<rect x="7" y="5" width="3.6" height="14" rx="1.2" fill="currentColor" stroke="none"/><rect x="13.4" y="5" width="3.6" height="14" rx="1.2" fill="currentColor" stroke="none"/>'
+    : '<path d="M7 4.6 19 12 7 19.4z" fill="currentColor" stroke="none"/>';
+  if(!playing2){ cancelAnimationFrame(playRAF2); return; }
+  let last = performance.now();
+  const step = now => {
+    if(!playing2) return;
+    playT2 += (now - last) / 1000 * 2.2; last = now;
+    if(playT2 >= DUR) playT2 = 0;
+    tickVRes();
+    playRAF2 = requestAnimationFrame(step);
+  };
+  playRAF2 = requestAnimationFrame(step);
+}
+/* 播放时左半边的水印会真的跟着漂，右半边是修好的 —— 逐帧差异一眼可见 */
+function tickVRes(){
+  $('vTime2').textContent = fmt(playT2) + ' / ' + fmt(DUR);
+  $('vProg2').style.width = (playT2 / DUR * 100) + '%';
+  if(vCmpMode !== 'after') placeWM($('wmVRes'), vidBoxAt(playT2));
+}
+function toggleSwitch(el){ el.setAttribute('aria-checked', String(el.getAttribute('aria-checked') !== 'true')); }
+
+/* ══════════ 视频处理进度 ══════════ */
+const STEPS = [
+  ['解析视频信息','读取 900 帧 / 30 fps'],
+  ['分析镜头运动','判定水印逐帧漂移'],
+  ['追踪水印轨迹','3 关键帧 → 光流传播 900 帧'],
+  ['逐帧修复并合成','OpenCV 修复 + MediaCodec 硬编'],
+  ['保存到本地','写入相册，不覆盖原文件']
+];
+$('steps').innerHTML = STEPS.map(([n,s],i) => `
+  <div class="step pend" data-i="${i}">
+    <span class="mk">${i+1}</span>
+    <span class="tx"><b>${n}</b><span>${s}</span><div class="mini"><i></i></div></span>
+    <span class="pc">等待</span>
+  </div>`).join('');
+let raf = 0, prog = 0;
+function startVideo(){
+  prog = 0; cancelAnimationFrame(raf);
+  const t0 = performance.now();
+  const step = now => {
+    prog = Math.min(100, (now - t0) / 6200 * 100);
+    const C = 389.6;
+    $('ringPr').style.strokeDashoffset = C * (1 - prog / 100);
+    $('pct').innerHTML = Math.round(prog) + '<i>%</i>';
+    const left = Math.max(0, Math.round((100 - prog) / 100 * 80));
+    $('eta').textContent = prog >= 100 ? '即将完成' :
+      '预计剩余 ' + Math.floor(left/60) + ' 分 ' + (left%60) + ' 秒';
+    $('steps').querySelectorAll('.step').forEach((el,i) => {
+      const share = 100 / STEPS.length;
+      const p = Math.min(100, Math.max(0, (prog - i * share) / share * 100));
+      el.classList.toggle('done', p >= 100);
+      el.classList.toggle('run', p > 0 && p < 100);
+      el.classList.toggle('pend', p <= 0);
+      el.querySelector('.mini i').style.width = p + '%';
+      el.querySelector('.pc').textContent = p >= 100 ? '完成'
+        : p > 0 ? Math.round(p) + '%' : '等待';
+      el.querySelector('.mk').innerHTML = p >= 100 ? icon('check') : String(i+1);
+    });
+    if(prog < 100){ raf = requestAnimationFrame(step); }
+    else {
+      setTimeout(() => {
+        HIST.unshift({n:'咖啡馆拉花-已修复.mp4', k:'video', st:'ok', t:'刚刚',
+          d:'00:30', sz:'8.4 MB', th:ASSET.vid.after});
+        renderRecent();
+        toast('处理完成，已写入历史', 'check');
+        stack.push('vEdit'); show('vResult','r');
+        setTimeout(fitVideoRes, 40);
+      }, 420);
+    }
+  };
+  raf = requestAnimationFrame(step);
+}
+function cancelVideo(){
+  cancelAnimationFrame(raf); raf = 0; prog = 0;
+  $('ringPr').style.strokeDashoffset = 389.6;
+  $('pct').innerHTML = '0<i>%</i>';
+  $('eta').textContent = '正在启动本地引擎';
+  $('steps').querySelectorAll('.step').forEach((el,i) => {
+    el.className = 'step pend';
+    el.querySelector('.mk').innerHTML = String(i+1);
+    el.querySelector('.mini i').style.width = '0%';
+    el.querySelector('.pc').textContent = '等待';
+  });
+  go('vEdit');
+  toast('已取消处理，进度已释放', 'close');
+}
+let vSplit = 52, vCmpMode = 'compare';
+function fitVideoRes(){
+  placeWM($('wmVRes'), vidBoxAt(playT2));
+  cropTo($('vthumbBefore'), ASSET.vid.before, ASSET.vid.main);
+  cropTo($('vthumbAfter'), ASSET.vid.after, ASSET.vid.main);
+  setVidCmp(vCmpMode);
+}
+function placeVSplit(){
+  $('vResLine').style.left = `calc(${vSplit}% - 1px)`;
+  $('vResAfter').style.clipPath = `inset(0 0 0 ${vSplit}%)`;
+}
+function setVidCmp(mode){
+  vCmpMode = mode;
+  if(mode === 'before') $('vResAfter').style.clipPath = 'inset(0 0 0 100%)';
+  else if(mode === 'after') $('vResAfter').style.clipPath = 'inset(0 0 0 0)';
+  else placeVSplit();
+  $('vResLine').style.display = mode === 'compare' ? '' : 'none';
+  const tA = document.querySelector('#mediaVRes .tag.a');
+  const tB = document.querySelector('#mediaVRes .tag.b');
+  tA.style.display = mode === 'after' ? 'none' : '';
+  tB.style.display = mode === 'before' ? 'none' : '';
+  $('segVid').querySelectorAll('button').forEach(b =>
+    b.classList.toggle('on', b.dataset.v === mode));
+}
+$('segVid').addEventListener('click', e => {
+  const b = e.target.closest('button'); if(b) setVidCmp(b.dataset.v);
+});
+(function dragVSplit(){
+  const m = $('mediaVRes'), line = $('vResLine');
+  let on = false;
+  line.addEventListener('pointerdown', e => {
+    on = true; line.setPointerCapture(e.pointerId); e.stopPropagation();
+  });
+  line.addEventListener('pointermove', e => {
+    if(!on) return;
+    const r = m.getBoundingClientRect();
+    vSplit = Math.min(100, Math.max(0, (e.clientX - r.left) / r.width * 100));
+    placeVSplit();
+  });
+  const stop = () => { on = false; };
+  line.addEventListener('pointerup', stop);
+  line.addEventListener('pointercancel', stop);
+})();
+function toggleCheck(el){
+  el.setAttribute('aria-checked', String(el.getAttribute('aria-checked') !== 'true'));
+  const on = el.getAttribute('aria-checked') === 'true';
+  toast(on ? '已加入修复范围' : '已从修复范围移除', on ? 'check' : 'close');
+}
+
+/* ══════════ 初始化 ══════════ */
+function boot(){
+  renderRecent(); renderHist(); applyTheme();
+  refit('home');
+}
+boot();
+let rt = 0;
+addEventListener('resize', () => {
+  clearTimeout(rt);
+  rt = setTimeout(() => refit(cur), 120);
+});
+</script>
+</body>
+</html>
