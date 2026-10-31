@@ -1,0 +1,44 @@
+name: watermark_remover
+description: "水印工坊 —— 本地优先的图片与视频去水印 App（Android 第一阶段）"
+publish_to: 'none'
+version: 0.1.0+1
+
+environment:
+  sdk: ^3.13.5
+
+dependencies:
+  flutter:
+    sdk: flutter
+  flutter_localizations:
+    sdk: flutter
+
+  # 路由：Flutter 官方团队的声明式路由
+  go_router: ^18.1.0
+
+  # 状态管理：Riverpod（编译期安全，不依赖 BuildContext）
+  flutter_riverpod: ^3.4.3
+  riverpod_annotation: ^4.0.7
+
+  # 选图（Android 上走系统 Photo Picker，不申请读全库权限）+ 临时文件目录
+  image_picker: ^1.2.4
+  path_provider: ^2.1.6
+  package_info_plus: ^10.2.2
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+
+  flutter_lints: ^6.0.0
+
+  # Riverpod 代码生成（官方推荐的写法）
+  riverpod_generator: ^4.0.9
+  build_runner: ^2.16.2
+  integration_test:
+    sdk: flutter
+  image: ^4.12.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    # 调试用示例图：编辑器里的「用示例图」按钮走这里，省掉每次翻相册
+    - assets/samples/

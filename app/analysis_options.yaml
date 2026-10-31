@@ -1,0 +1,44 @@
+# 工程约定：以 flutter_lints 为基线，再收紧几条我们真正会在意的规则。
+include: package:flutter_lints/flutter.yaml
+
+analyzer:
+  exclude:
+    - build/**
+    - android/**
+    - "**/*.g.dart" # 生成的代码不参与人工规则检查（生成器自带规范）
+
+  language:
+    strict-casts: true
+    strict-inference: true
+    strict-raw-types: true
+
+  errors:
+    # 生成文件缺失时直接报错，避免「改了 provider 忘了跑 build_runner」被忽略
+    invalid_annotation_target: error
+    missing_required_param: error
+    missing_return: error
+
+linter:
+  rules:
+    # ── 可读性 / 一致性 ──
+    always_declare_return_types: true
+    prefer_single_quotes: true
+    prefer_final_locals: true
+    prefer_const_constructors: true
+    prefer_const_declarations: true
+    require_trailing_commas: true
+
+    # ── 正确性 ──
+    avoid_print: true # 日志统一走 debugPrint 或后续 Logger 抽象
+    unawaited_futures: true
+    avoid_slow_async_io: true
+    cancel_subscriptions: true
+    close_sinks: true
+    only_throw_errors: true
+    throw_in_finally: true
+
+    # ── 分层纪律 ──
+    # presentation 层不要反向依赖具体实现细节，这里先用 import 顺序类规则兜底
+    directives_ordering: true
+    sort_constructors_first: true
+    use_super_parameters: true

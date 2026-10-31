@@ -1,0 +1,52 @@
+# ---------------------------------------------------------------
+# 水印工坊 · 仓库级忽略规则
+#
+# app/ 内部另有一份 Flutter 官方生成的 .gitignore（build/、.dart_tool/、
+# .idea/、*.iml 等），android/ 下还有一份（local.properties、keystore）。
+# 这里只补「仓库级」需要统一挡掉的东西，避免两边规则打架。
+# ---------------------------------------------------------------
+
+# 工作区本地数据：调试记忆、真机验收截图、临时脚本
+# —— 含本机路径、真机序列号与调试过程，不对外发布
+.workbuddy/
+
+# Flutter / Dart 构建产物与缓存
+app/build/
+app/.dart_tool/
+app/.flutter-plugins
+app/.flutter-plugins-dependencies
+app/.pub-cache/
+app/.pub/
+app/coverage/
+**/doc/api/
+
+# Android 构建产物与本地 SDK 配置
+app/android/.gradle/
+app/android/local.properties
+app/android/key.properties
+**/*.jks
+**/*.keystore
+app/android/app/debug/
+app/android/app/profile/
+app/android/app/release/
+*.apk.lock
+
+# IDE / 编辑器
+.idea/
+*.iml
+*.ipr
+*.iws
+.vscode/
+*.swp
+*~
+
+# 操作系统
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# 日志与临时文件
+*.log
+*.tmp
+
+# 注意：dist/ 下的发布包**要**入库，别把它加到这里
