@@ -68,21 +68,22 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 
 ## 三、安装包
 
-`dist/` 目录里有编译好的 APK，直接下载装到手机上即可：
+**从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-dist/watermark-remover-v0.1.1-arm64.apk    49 MB
+watermark-remover-v0.1.1-arm64.apk    49 MB
+SHA-256  a6cbb0c7c2f32e17da6c1716fc5c8adfc30a3159abeb30ef91ad48f45c100936
 ```
 
-- SHA-256：`a6cbb0c7c2f32e17da6c1716fc5c8adfc30a3159abeb30ef91ad48f45c100936`
-- 构建于 2026-11-01，对应本仓库当前 `main` 分支的代码
+> 安装包**不放进 git 仓库**（单包 49 MB，进版本控制会把这个仓库撑到几百 MB，
+> 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
+> `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
+> 那个位置，只是不会污染提交。
 
 **v0.1.1 变更**：修复两处修复质量问题 —— 掩膜自动外扩（吃掉落水印边缘的抗锯齿与 JPEG/H.264 块噪声）
 并在边界做羽化过渡，去掉「选中区域残留一层鬼影/硬边」；视频修复强度默认值 4 → 6 与图片对齐；
 选区占画面超过 12% 时结果页会说明「这一块只能填成平滑色块」，并提示只框住水印本身。
 详见 `app/README.md` 的「修复质量」一节。
-
-> 也可以在仓库右侧 **Releases** 页面下载同样的包。
 
 **装之前请先读这三行：**
 
@@ -175,7 +176,7 @@ watermark/
 │   ├── tool/                     # 构建与真机验收脚本
 │   ├── assets/samples/           # 内置示例图/视频（编辑器里的「用示例」按钮）
 │   └── README.md                 # 工程细节：选型理由、分层约定、实测数字
-├── dist/                         # 发布用的 APK
+├── dist/                         # 本地构建产物（APK 不入库，只在 Releases 分发）
 ├── ui/                           # 界面截图（浅色 / 深色）
 ├── assets/                       # 原型阶段的示例图（带 / 不带水印对照）
 ├── 技术方案/                     # 算法与架构设计文档

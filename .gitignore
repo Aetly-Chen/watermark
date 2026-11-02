@@ -49,4 +49,7 @@ desktop.ini
 *.log
 *.tmp
 
-# 注意：dist/ 下的发布包**要**入库，别把它加到这里
+# 发布包不进 git —— 单个 49 MB，每改一版就多一份副本。
+# 二进制走 GitHub Releases，dist/ 只作为本地构建产物的落地目录。
+dist/*.apk
+dist/*.aab
