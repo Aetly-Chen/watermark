@@ -57,6 +57,7 @@ class VideoRepairResult {
     this.driftPx = 0,
     this.keyframeSwitches = 0,
     this.motionInliers = 0,
+    this.maskRatio = 0,
   });
 
   factory VideoRepairResult.fromChannelMap(Map<String, Object?> map) {
@@ -85,6 +86,7 @@ class VideoRepairResult {
       driftPx: (map['driftPx'] as num?)?.toDouble() ?? 0,
       keyframeSwitches: (map['keyframeSwitches'] as num?)?.toInt() ?? 0,
       motionInliers: (map['motionInliers'] as num?)?.toInt() ?? 0,
+      maskRatio: (map['maskRatio'] as num?)?.toDouble() ?? 0,
     );
   }
 
@@ -100,6 +102,16 @@ class VideoRepairResult {
   final int maskPixels;
   final int sizeBytes;
   final Duration elapsed;
+
+  /// 选区占画面的比例（0~1）。
+  ///
+  /// 为什么单独带出来：TELEA 是扩散型填充，洞大了没有纹理可用，结果必然是一片平滑色斑
+  /// （实测 353×365 的洞占 960×540 画面 24.9%，填出来是一个 X 形灰斑）。
+  /// 这不是参数能修的，只能让用户知道「框太大」——UI 用 [maskRatioTooBig] 判断要不要提示。
+  final double maskRatio;
+
+  /// 选区是否大到「填出来必然是一块平色」。阈值 12%，与 Kotlin 侧 `BIG_MASK_RATIO` 一致。
+  bool get maskRatioTooBig => maskRatio > 0.12;
 
   /// 镜头运动跟踪成功 / 失败的帧数（`trackMotion=false` 时都是 0）。
   final int motionTracked;
@@ -163,7 +175,9 @@ class VideoRepairer {
     required String inputPath,
     required String outputPath,
     required Rect selection,
-    int radius = 4,
+    // 与图片路径对齐（图片是 6/8）。原来这里 4：同一个洞上半径越小填得越糊，
+    // 实测 inpaint 只占单帧几毫秒，这点开销换观感划算。
+    int radius = 6,
     bool trackMotion = false,
     String? taskId,
     void Function(VideoRepairPhase phase, int done, int total)? onProgress,

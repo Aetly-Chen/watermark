@@ -41,6 +41,13 @@ object ImageProcessor {
      */
     private const val MIN_REFINED_RATIO = 0.005
 
+    /** 图片路径的掩膜外扩：污染半径实测 10~14px，随质量档在 [8, 16] 之间取。 */
+    private const val MIN_GROW_PX = 8
+    private const val MAX_GROW_PX = 16
+
+    /** 边界羽化宽度（像素）。实测接缝梯度 3.33x → 1.66x。 */
+    private const val FEATHER_PX = 3
+
     class InvalidMaskException(message: String) : IllegalArgumentException(message)
 
     fun inpaint(
@@ -114,7 +121,16 @@ object ImageProcessor {
 
             // 4 通道 → 3 通道，inpaint 的唯一合法输入
             Imgproc.cvtColor(srcRgba, srcBgr, Imgproc.COLOR_RGBA2BGR)
-            val repaired = inpaintBgr(srcBgr, finalMask, radius)
+            // 先外扩再修：掩膜边界压在水印抗锯齿/JPEG 块上时，TELEA 会把笔画色抹进洞里
+            // （实测余量 2px 时字区 std 15.57，外扩到 12~14px 才降到 1.43）
+            val grow = (radius * 2).coerceIn(MIN_GROW_PX, MAX_GROW_PX)
+            val repaired = inpaintBgr(
+                srcBgr,
+                finalMask,
+                radius,
+                growPx = grow,
+                featherPx = FEATHER_PX,
+            )
             // 回 4 通道，matToBitmap 要 RGBA
             Imgproc.cvtColor(repaired, dstRgba, Imgproc.COLOR_BGR2RGBA)
             repaired.release()
@@ -130,7 +146,11 @@ object ImageProcessor {
                     }
                 }
                 val elapsed = SystemClock.elapsedRealtime() - started
-                Log.i(TAG, "inpaint ok ${dstRgba.cols()}x${dstRgba.rows()} radius=$radius ${elapsed}ms")
+                Log.i(
+                    TAG,
+                    "inpaint ok ${dstRgba.cols()}x${dstRgba.rows()} radius=$radius " +
+                        "grow=${grow}px feather=${FEATHER_PX}px ${elapsed}ms",
+                )
                 return mapOf(
                     "outputPath" to file.absolutePath,
                     "width" to dstRgba.cols(),
@@ -166,9 +186,27 @@ object ImageProcessor {
      * 上下文就够了，结果与全图修复等价。收益是实测出来的：
      * 960×540 上框 172×92，单帧从 **116 ms 降到 6 ms**（视频 150 帧的总耗时砍掉一半）。
      *
-     * mask 必须是 8UC1，非零 = 修。
+     * ## 两个新参数（2026-11-01）各自治一个实测出来的病
+     *
+     * **`growPx`：先把 Mask 外扩再修。** TELEA 以洞边界为颜色来源向内扩散，
+     * 边界只要沾到水印的抗锯齿 / JPEG·H.264 块噪声，笔画颜色就会被抹进洞里，
+     * 形成一层「鬼影」。cafe 实测（文字区纹理 std，原图 3.04）：
+     * 框余量 2px → 15.57（鬼影最重）、6px → 9.67、12~14px → 1.43（干净）。
+     * 即**污染半径约 10~14px**，H.264 宏块更大，视频按 16px 起步。
+     * 真机成品里抓到过同款：掩膜下边界切在字中间，右下角留着半个字母。
+     *
+     * **`featherPx`：修完在边界做过渡。** 直接 copyTo 会留下一条硬接缝，
+     * 实测接缝梯度是内部的 3.33 倍；3px 羽化后降到 1.66 倍。
+     *
+     * 两个参数默认 0 = 原来的行为，老用例与老结果不受影响。
      */
-    fun inpaintBgr(srcBgr: Mat, mask: Mat, radius: Int): Mat {
+    fun inpaintBgr(
+        srcBgr: Mat,
+        mask: Mat,
+        radius: Int,
+        growPx: Int = 0,
+        featherPx: Int = 0,
+    ): Mat {
         require(srcBgr.type() == CvType.CV_8UC3) {
             "inpaintBgr 只接受 8UC3，收到 type=${srcBgr.type()}"
         }
@@ -180,36 +218,106 @@ object ImageProcessor {
                 "${mask.cols()}x${mask.rows()} 尺寸不一致"
         }
 
-        val roi = inpaintRoi(mask, srcBgr.cols(), srcBgr.rows(), radius)
-            ?: return srcBgr.clone() // mask 全黑：没有要修的地方，原样返回
+        val grow = growPx.coerceIn(0, 32)
+        val feather = featherPx.coerceIn(0, 16)
+        val workMask = if (grow > 0) dilateMask(mask, grow) else mask
 
-        val srcRoi = srcBgr.submat(roi)
-        val maskRoi = mask.submat(roi)
-        val restored = Mat()
         try {
-            // inpaint 不保证接受非连续内存（submat 可能就是），clone 一份只有几十 KB，别赌
-            val srcCopy = srcRoi.clone()
-            val maskCopy = maskRoi.clone()
+            // ROI 余量要把外扩与羽化都算进去，否则羽化带会被裁掉一半
+            val roi = inpaintRoi(
+                workMask,
+                srcBgr.cols(),
+                srcBgr.rows(),
+                radius + grow + feather,
+            ) ?: return srcBgr.clone() // mask 全黑：没有要修的地方，原样返回
+
+            val out = srcBgr.clone()
+            val srcRoi = srcBgr.submat(roi)
+            val outRoi = out.submat(roi)
+            val maskRoi = workMask.submat(roi)
+            val restored = Mat()
             try {
-                Photo.inpaint(srcCopy, maskCopy, restored, radius.toDouble(), Photo.INPAINT_TELEA)
+                // inpaint 不保证接受非连续内存（submat 可能就是），clone 一份只有几十 KB，别赌
+                val srcCopy = srcRoi.clone()
+                val maskCopy = maskRoi.clone()
+                try {
+                    Photo.inpaint(
+                        srcCopy,
+                        maskCopy,
+                        restored,
+                        radius.toDouble(),
+                        Photo.INPAINT_TELEA,
+                    )
+                } finally {
+                    srcCopy.release()
+                    maskCopy.release()
+                }
+                restored.copyTo(outRoi)
+                if (feather > 0) {
+                    blendSeam(srcRoi, outRoi, maskRoi, feather)
+                }
             } finally {
-                srcCopy.release()
-                maskCopy.release()
+                restored.release()
+                maskRoi.release()
+                outRoi.release()
+                srcRoi.release()
             }
+            return out
         } finally {
-            srcRoi.release()
-            maskRoi.release()
+            if (workMask !== mask) workMask.release()
         }
+    }
 
-        val out = srcBgr.clone()
-        val outRoi = out.submat(roi)
+    /** 椭圆结构元做形态学膨胀，让掩膜整体向外吃 `px` 像素。 */
+    private fun dilateMask(mask: Mat, px: Int): Mat {
+        val size = (px * 2 + 1).toDouble()
+        val kernel = Imgproc.getStructuringElement(Imgproc.MORPH_ELLIPSE, Size(size, size))
+        val grown = Mat()
         try {
-            restored.copyTo(outRoi)
+            Imgproc.dilate(mask, grown, kernel)
         } finally {
-            outRoi.release()
-            restored.release()
+            kernel.release()
         }
-        return out
+        return grown
+    }
+
+    /**
+     * 把修复结果与原图在掩膜边界处过渡。
+     *
+     * **只动边界，不动内部**：alpha 是「掩膜模糊后的灰度」，洞中心仍是 1（全用修复结果），
+     * 外侧很快降到 0（全用原图）。所以既不会把水印带回来（水印远在洞内），
+     * 也不会让修复结果漏到背景上。
+     */
+    private fun blendSeam(srcRoi: Mat, dstRoi: Mat, maskRoi: Mat, feather: Int) {
+        val alpha = Mat()
+        val alpha3 = Mat()
+        val srcF = Mat()
+        val dstF = Mat()
+        val delta = Mat()
+        val scaled = Mat()
+        val result = Mat()
+        try {
+            maskRoi.convertTo(alpha, CvType.CV_32F, 1.0 / 255.0)
+            val k = (feather * 2 + 1).toDouble()
+            Imgproc.GaussianBlur(alpha, alpha, Size(k, k), 0.0)
+            Core.merge(listOf(alpha, alpha, alpha), alpha3)
+
+            srcRoi.convertTo(srcF, CvType.CV_32FC3)
+            dstRoi.convertTo(dstF, CvType.CV_32FC3)
+            // out = src + (inpainted - src) * alpha，省掉一次算 1-alpha
+            Core.subtract(dstF, srcF, delta)
+            Core.multiply(delta, alpha3, scaled)
+            Core.add(srcF, scaled, result)
+            result.convertTo(dstRoi, CvType.CV_8UC3)
+        } finally {
+            alpha.release()
+            alpha3.release()
+            srcF.release()
+            dstF.release()
+            delta.release()
+            scaled.release()
+            result.release()
+        }
     }
 
     /**

@@ -129,6 +129,16 @@ class VideoEditorPage extends ConsumerWidget {
                       ),
                     ],
                   ),
+                  if (state.result!.maskRatioTooBig) ...[
+                    const SizedBox(height: 6),
+                    // 大洞不是参数能修的：TELEA 在 24.9% 画面的矩形洞上只会填出一块 X 形灰斑
+                    // （实测）。与其让用户以为「修坏了」，不如当场说清原因和出路。
+                    _Hint(
+                      text: '选区占画面 '
+                          '${(state.result!.maskRatio * 100).round()}%，'
+                          '这块只能填成一片平滑色块；想更自然，请只框住水印本身再修一次',
+                    ),
+                  ],
                   if (state.saveError != null) ...[
                     const SizedBox(height: 6),
                     _Hint(text: state.saveError!),

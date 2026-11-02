@@ -415,14 +415,19 @@ void main() {
   // 平台侧（MediaStore 写入）只能在真机上验，这里只到「控件状态与文案」为止。
 
   /// 结果态的最小状态：只填 `result`，其余走默认值。
-  VideoEditState resultState({bool saving = false, String? savedUri, String? saveError}) {
+  VideoEditState resultState({
+    bool saving = false,
+    String? savedUri,
+    String? saveError,
+    double maskRatio = 0,
+  }) {
     return VideoEditState(
       videoPath: meta.path,
       meta: meta,
       poster: posterBytes,
       posterSize: const Size(960, 540),
       selection: const Rect.fromLTRB(0.4, 0.35, 0.58, 0.52),
-      result: const VideoRepairResult(
+      result: VideoRepairResult(
         outputPath: '/tmp/fixed.mp4',
         width: 960,
         height: 540,
@@ -434,7 +439,8 @@ void main() {
         hasAudio: true,
         maskPixels: 15824,
         sizeBytes: 1562172,
-        elapsed: Duration(milliseconds: 56074),
+        elapsed: const Duration(milliseconds: 56074),
+        maskRatio: maskRatio,
       ),
       saving: saving,
       savedUri: savedUri,
@@ -460,6 +466,25 @@ void main() {
       isNotNull,
       reason: '修完不给保存入口，等于这次修复白做',
     );
+  });
+
+  testWidgets('选区太大（占画面 25%）：结果页直说「只能填成一片平滑色块」', (tester) async {
+    await pumpPage(tester, resultState(maskRatio: 0.25));
+
+    // 大洞不是参数能修的（实测 24.9% 的矩形洞只会填出 X 形灰斑），
+    // 与其让用户以为「修坏了」，不如把原因和出路写在结果页上。
+    expect(find.textContaining('25%'), findsOneWidget);
+    expect(
+      find.textContaining('只框住水印'),
+      findsOneWidget,
+      reason: '大洞必须给出「怎么办」，否则用户只看到一块糊',
+    );
+  });
+
+  testWidgets('选区正常（占画面 5%）：不出现大洞提示，不啰嗦', (tester) async {
+    await pumpPage(tester, resultState(maskRatio: 0.05));
+
+    expect(find.textContaining('只框住水印'), findsNothing);
   });
 
   testWidgets('有结果：露出「预览效果」，能播整段而不只是一帧', (tester) async {

@@ -68,6 +68,21 @@ object VideoProcessor {
     /** 每处理这么多帧报一次进度。太密会把主线程刷爆。 */
     private const val PROGRESS_EVERY = 5
 
+    /** 视频掩膜外扩：H.264 宏块 16px，比图片的 12px 再多一档。 */
+    private const val VIDEO_GROW_PX = 16
+
+    /** 边界羽化（像素），与图片路径一致。 */
+    private const val VIDEO_FEATHER_PX = 3
+
+    /**
+     * 掩膜占画面的比例超过这个值就提醒一句。
+     *
+     * 实测 24.9% 的矩形洞（353×365 / 960×540）上 TELEA 只能沿四条对角线扩散，
+     * 填出一个巨大的 X 形灰斑 —— 那不是「修得不好」，是算法在大洞上没有信息可用。
+     * 阈值取 12%：再大就该提示用户缩小选区，或者换纹理合成/AI。
+     */
+    private const val BIG_MASK_RATIO = 0.12
+
     /**
      * 进度阶段。两趟化之后一条任务会先报 [PHASE_MOTION]、再报 [PHASE_REPAIR]；
      * 静止水印只有一趟，只会报 [PHASE_REPAIR]。
@@ -198,6 +213,14 @@ object VideoProcessor {
                 "audioBytes" to audioBytes,
                 "hasAudio" to (audioTrackIndex != null),
                 "maskPixels" to transcode.maskPixels,
+                // 选区占画面的比例。超过 BIG_MASK_RATIO 时结果必然是平滑色斑，
+                // 交给 Dart 侧决定要不要提示用户（Kotlin 这边只负责量出来）。
+                "maskRatio" to if (transcode.frameWidth * transcode.frameHeight > 0) {
+                    transcode.maskPixels.toDouble() /
+                        (transcode.frameWidth.toDouble() * transcode.frameHeight)
+                } else {
+                    0.0
+                },
                 "motionTracked" to transcode.motionOk,
                 "motionFailed" to transcode.motionFailed,
                 "motionShiftPx" to transcode.cumulativeShiftPx,
@@ -750,7 +773,21 @@ object VideoProcessor {
             maskMat = buildMask(rawW, rawH)
             maskPixels = countMaskPixels(maskMat)
             ensureFrameBuffers(rawW, rawH)
-            Log.i(TAG, "encoder ready ${rawW}x$rawH bitrate=$bitrate fps=$frameRate mask=$maskPixels px")
+            val ratio = maskPixels.toDouble() / (rawW.toDouble() * rawH)
+            Log.i(
+                TAG,
+                "encoder ready ${rawW}x$rawH bitrate=$bitrate fps=$frameRate " +
+                    "mask=$maskPixels px (${"%.1f".format(ratio * 100)}%)",
+            )
+            if (ratio > BIG_MASK_RATIO) {
+                // 这里只能提醒，改不了结果：大洞上 TELEA 没有可用纹理，填出来必然是平滑色斑
+                Log.w(
+                    TAG,
+                    "选区占画面 ${"%.1f".format(ratio * 100)}%，超过 " +
+                        "${"%.0f".format(BIG_MASK_RATIO * 100)}% —— 这个尺寸的洞只能填出平滑色斑，" +
+                        "建议缩小选区或改用纹理合成",
+                )
+            }
         }
 
         /**
@@ -833,8 +870,20 @@ object VideoProcessor {
                 tTrack += SystemClock.elapsedRealtime() - mark
                 mark = SystemClock.elapsedRealtime()
             }
-            // 与图片路径同一份修复逻辑（共用 ImageProcessor.inpaintBgr）
-            val repaired = ImageProcessor.inpaintBgr(frameBgr, maskMat, radius)
+            // 与图片路径同一份修复逻辑（共用 ImageProcessor.inpaintBgr）。
+            // 视频这边外扩要更大：H.264 的宏块是 16px，水印边缘的块噪声比 JPEG 更外扩，
+            // 掩膜只要贴着笔画，TELEA 就会把块噪声抹成一层鬼影（真机成品里出现过残留字母）。
+            //
+            // 代价说清楚：大洞上外扩会让擦除面积变大（实测 24% → 29%），接缝比 1.17 → 1.24，
+            // 填充区纹理 std 几乎不变（53.46 → 53.28）。也就是**大洞这个问题外扩救不了**，
+            // 它只能救"框贴边导致残留"；大洞要靠 BIG_MASK_RATIO 那条警告把人劝回来。
+            val repaired = ImageProcessor.inpaintBgr(
+                frameBgr,
+                maskMat,
+                radius,
+                growPx = VIDEO_GROW_PX,
+                featherPx = VIDEO_FEATHER_PX,
+            )
             tInpaint += SystemClock.elapsedRealtime() - mark
             mark = SystemClock.elapsedRealtime()
             try {
