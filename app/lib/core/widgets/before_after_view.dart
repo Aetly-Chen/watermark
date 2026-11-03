@@ -29,11 +29,16 @@ class BeforeAfterView extends StatefulWidget {
     required this.before,
     required this.after,
     this.mode = CompareMode.compare,
+    this.imageAspect,
   });
 
   final Widget before;
   final Widget after;
   final CompareMode mode;
+
+  /// 图片（或视频封面帧）的宽高比。给了就把对比画面收成这个比例，
+  /// 分界线按图片宽度算 —— 面板比例和图片差得远时（横屏）必须给，不然分界线会跑到图外。
+  final double? imageAspect;
 
   @override
   State<BeforeAfterView> createState() => _BeforeAfterViewState();
@@ -72,9 +77,24 @@ class _BeforeAfterViewState extends State<BeforeAfterView> {
       case CompareMode.compare:
         return LayoutBuilder(
           builder: (context, constraints) {
-            final width = constraints.maxWidth;
+            // 传了 imageAspect 就把对比画面收成图片自身的比例。
+            //
+            // 不这么做的话，面板比图片宽很多时（真机横屏就是这样：面板 2100px 宽、
+            // 图片按高度只占 231dp）画面会被 letterbox 成中间一小条，而分界线仍按
+            // **面板宽度**算 —— 把手落到图片外面，右边那半直接看不见，
+            // 整个结果页读起来就是「坏了」。
+            final aspect = widget.imageAspect;
+            var width = constraints.maxWidth;
+            var height = constraints.maxHeight;
+            if (aspect != null && aspect > 0 && height > 0) {
+              if (width / height > aspect) {
+                width = height * aspect;
+              } else {
+                height = width / aspect;
+              }
+            }
             final x = width * _split;
-            return Stack(
+            final stack = Stack(
               key: const ValueKey('compare-split'),
               fit: StackFit.expand,
               children: [
@@ -101,8 +121,8 @@ class _BeforeAfterViewState extends State<BeforeAfterView> {
                       alignment: Alignment.topLeft,
                       minWidth: width,
                       maxWidth: width,
-                      minHeight: constraints.maxHeight,
-                      maxHeight: constraints.maxHeight,
+                      minHeight: height,
+                      maxHeight: height,
                       child: widget.after,
                     ),
                   ),
@@ -157,6 +177,10 @@ class _BeforeAfterViewState extends State<BeforeAfterView> {
                 ),
               ],
             );
+            if (aspect == null || aspect <= 0) return stack;
+            return Center(
+              child: SizedBox(width: width, height: height, child: stack),
+            );
           },
         );
     }
@@ -174,10 +198,14 @@ class BeforeAfterSwitch extends StatefulWidget {
     required this.before,
     required this.after,
     this.initialMode = CompareMode.compare,
+    this.imageAspect,
   });
 
   final Widget before;
   final Widget after;
+
+  /// 图片宽高比，透传给内部的 [BeforeAfterView]。
+  final double? imageAspect;
 
   /// 默认「对比」：切来切去看不出差别，并排才看得清。
   final CompareMode initialMode;
@@ -202,6 +230,7 @@ class _BeforeAfterSwitchState extends State<BeforeAfterSwitch> {
             before: widget.before,
             after: widget.after,
             mode: _mode,
+            imageAspect: widget.imageAspect,
           ),
         ),
         Positioned(

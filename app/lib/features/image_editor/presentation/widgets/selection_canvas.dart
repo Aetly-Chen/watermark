@@ -242,7 +242,12 @@ class _SelectionCanvasState extends State<SelectionCanvas> {
                   ),
                 ),
               ),
-              if (widget.draft.isEmpty && _activePoints == null)
+              // 提示语只在「画面下方还有留白」时显示。
+              // 画布很矮（横屏 / 分屏）时画面会按高度顶满，这行字就正好压在
+              // 要框选的地方 —— 横屏实测见过，字和花瓣叠在一起，反而挡操作。
+              if (widget.draft.isEmpty &&
+                  _activePoints == null &&
+                  (area.height - imageRect.bottom) >= 26)
                 Positioned(
                   left: 0,
                   right: 0,

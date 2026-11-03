@@ -7,6 +7,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/before_after_view.dart';
+import '../../../core/widgets/editor_canvas_layout.dart';
 import '../application/image_edit_controller.dart';
 import '../domain/mask_draft.dart';
 import 'widgets/selection_canvas.dart';
@@ -35,24 +36,21 @@ class ImageEditorPage extends ConsumerWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          // ── 画布 ──
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: t.media,
-                borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-              ),
-              child: _CanvasArea(state: state, controller: controller),
-            ),
+      body: EditorCanvasLayout(
+        // ── 画布 ──
+        canvas: Container(
+          margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: t.media,
+            borderRadius: BorderRadius.circular(AppTokens.radiusCard),
           ),
+          child: _CanvasArea(state: state, controller: controller),
+        ),
 
-          // ── 下方面板 ──
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+        // ── 下方面板 ──
+        controls: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -152,6 +150,18 @@ class ImageEditorPage extends ConsumerWidget {
                   ],
                   const SizedBox(height: 12),
                 ],
+              ],
+            ),
+        ),
+
+        // 主操作固定在底部：横屏 / 分屏下控制面板会变成可滚动，
+        // 按钮跟着滚走的话，转屏后第一眼找不到操作入口。
+        pinned: Padding(
+          padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            mainAxisSize: MainAxisSize.min,
+            children: [
                 if (state.hasResult) ...[
                   if (state.saveError != null) ...[
                     _ErrorBanner(message: state.saveError!),
@@ -228,10 +238,9 @@ class ImageEditorPage extends ConsumerWidget {
                     style: textTheme.bodySmall,
                   ),
                 ],
-              ],
-            ),
+            ],
           ),
-        ],
+        ),
       ),
     );
   }
@@ -287,6 +296,9 @@ class _CanvasArea extends StatelessWidget {
           fit: BoxFit.contain,
           gaplessPlayback: true,
         ),
+        imageAspect: state.imageSize == null || state.imageSize!.height == 0
+            ? null
+            : state.imageSize!.width / state.imageSize!.height,
       );
     }
 

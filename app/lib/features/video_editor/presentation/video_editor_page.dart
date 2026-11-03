@@ -7,6 +7,7 @@ import '../../../core/theme/app_tokens.dart';
 import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/before_after_view.dart';
+import '../../../core/widgets/editor_canvas_layout.dart';
 import '../../../core/widgets/video_preview_dialog.dart';
 import '../../image_editor/domain/mask_draft.dart';
 import '../../image_editor/presentation/widgets/selection_canvas.dart';
@@ -42,21 +43,21 @@ class VideoEditorPage extends ConsumerWidget {
           const SizedBox(width: 8),
         ],
       ),
-      body: Column(
-        children: [
-          Expanded(
-            child: Container(
-              margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: t.media,
-                borderRadius: BorderRadius.circular(AppTokens.radiusCard),
-              ),
-              child: _CanvasArea(state: state, controller: controller),
-            ),
+      body: EditorCanvasLayout(
+        // ── 画布 ──
+        canvas: Container(
+          margin: const EdgeInsets.fromLTRB(16, 4, 16, 0),
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            color: t.media,
+            borderRadius: BorderRadius.circular(AppTokens.radiusCard),
           ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 12),
+          child: _CanvasArea(state: state, controller: controller),
+        ),
+
+        // ── 下方面板 ──
+        controls: Padding(
+            padding: EdgeInsets.fromLTRB(16, 12, 16, state.hasVideo ? 10 : 12),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
@@ -156,24 +157,9 @@ class VideoEditorPage extends ConsumerWidget {
                   ),
                   const SizedBox(height: 10),
                 ],
-                if (state.hasVideo)
-                  AppButton(
-                    label: state.processing
-                        ? '取消修复'
-                        : (state.result != null ? '重新修复' : '开始修复'),
-                    icon: state.processing
-                        ? Icons.stop_rounded
-                        : Icons.auto_fix_high_rounded,
-                    variant: state.processing
-                        ? AppButtonVariant.secondary
-                        : AppButtonVariant.primary,
-                    onPressed: !state.canRepair && !state.processing
-                        ? null
-                        : (state.processing
-                              ? controller.cancelRepair
-                              : controller.startRepair),
-                  )
-                else
+                // 主按钮不放在这里，交给 EditorCanvasLayout 的 pinned 槽：
+                // 横屏/分屏下控制面板会变成可滚动，主操作不该被滚出屏幕。
+                if (!state.hasVideo) ...[
                   Row(
                     children: [
                       Expanded(
@@ -193,7 +179,6 @@ class VideoEditorPage extends ConsumerWidget {
                       ),
                     ],
                   ),
-                if (!state.hasVideo) ...[
                   const SizedBox(height: 8),
                   Text(
                     '示例视频是内置的 1 MB 短片（MDN CC0），用来跑通探测与帧提取，不经过相册。',
@@ -203,8 +188,30 @@ class VideoEditorPage extends ConsumerWidget {
                 ],
               ],
             ),
-          ),
-        ],
+        ),
+
+        // 主操作固定在底部，不随控制面板滚动（横屏/分屏下尤其重要）
+        pinned: state.hasVideo
+            ? Padding(
+                padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
+                child: AppButton(
+                  label: state.processing
+                      ? '取消修复'
+                      : (state.result != null ? '重新修复' : '开始修复'),
+                  icon: state.processing
+                      ? Icons.stop_rounded
+                      : Icons.auto_fix_high_rounded,
+                  variant: state.processing
+                      ? AppButtonVariant.secondary
+                      : AppButtonVariant.primary,
+                  onPressed: !state.canRepair && !state.processing
+                      ? null
+                      : (state.processing
+                            ? controller.cancelRepair
+                            : controller.startRepair),
+                ),
+              )
+            : null,
       ),
     );
   }
@@ -310,6 +317,9 @@ class _CanvasArea extends StatelessWidget {
           fit: BoxFit.contain,
           gaplessPlayback: true,
         ),
+        imageAspect: state.posterSize == null || state.posterSize!.height == 0
+            ? null
+            : state.posterSize!.width / state.posterSize!.height,
       );
     }
 
