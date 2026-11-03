@@ -71,14 +71,23 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.1.1-arm64.apk    49 MB
-SHA-256  a6cbb0c7c2f32e17da6c1716fc5c8adfc30a3159abeb30ef91ad48f45c100936
+watermark-remover-v0.1.2-arm64.apk    51 MB
+SHA-256  1790488e297028fd63f4a721556e0d9b650945b5222d9638d7c6ef71dc6a0f0a
 ```
 
-> 安装包**不放进 git 仓库**（单包 49 MB，进版本控制会把这个仓库撑到几百 MB，
+> 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.1.2 变更**
+
+- **切屏后界面不再塌**：横屏 / 分屏这类矮视口下，编辑页画布会被 `Expanded` 压成一条
+  （真机实测只剩 31dp），根本没法框选。新增 `EditorCanvasLayout`：可用高度 < 520dp 时
+  画布按比例保底、控制面板塞进剩余空间可滚动、主操作单独固定在底部不跟着滚。
+- **结果页对比分屏按图片比例算**：原来分界线按面板宽度算，横屏时画面被缩成中间一条、
+  把手落到图外，「修复后」那半看不见。
+- **换成正式签名**（见下面第 2 条）。
 
 **v0.1.1 变更**：修复两处修复质量问题 —— 掩膜自动外扩（吃掉落水印边缘的抗锯齿与 JPEG/H.264 块噪声）
 并在边界做羽化过渡，去掉「选中区域残留一层鬼影/硬边」；视频修复强度默认值 4 → 6 与图片对齐；
@@ -89,8 +98,10 @@ SHA-256  a6cbb0c7c2f32e17da6c1716fc5c8adfc30a3159abeb30ef91ad48f45c100936
 
 1. **仅支持 64 位 ARM 设备**（arm64-v8a）。2019 年之后的绝大多数手机都是这个架构；
    32 位老机型会报 `INSTALL_FAILED_NO_MATCHING_ABIS`，需要自己按第五节的命令构建。
-2. 这是**用 debug 签名**的测试包（`signingConfig = debug`），可以正常安装和使用，
-   但**不适合上架应用商店**，也不能作为正式发行版分发。
+2. 从 v0.1.2 起是**正式签名**（`CN=Shuiyin Workshop`，SHA-256 指纹
+   `F3:03:81:12:70:53:F3:67:FF:1E:72:92:0F:04:F9:2E:09:1B:53:8B:6F:B4:6E:CC:35:94:32:EF:9E:67:03:D7`），
+   可以上架应用商店，以后换版本也能直接覆盖升级。
+   ⚠️ **从 v0.1.1（debug 签名）升上来必须先卸载**，否则报 `INSTALL_FAILED_UPDATE_INCOMPATIBLE`。
 3. 安装时系统可能提示「未知来源应用」，需要在设置里允许一次。
 
 ---
@@ -138,6 +149,21 @@ bash tool/build_release.sh      # 产物拷到 D:\dev\apk\watermark-remover-rele
 `gen_snapshot` 按系统 ANSI 代码页读路径会变成 `D:\???\watermark`，直接失败。
 `tool/build_release.sh` 的做法是把源码快照复制到一个纯 ASCII 路径再构建。
 脚本里 `STAGE_DIR` / `OUT_DIR` 可以用环境变量改。
+
+**签名**：release 从 `app/android/key.properties` 读口令，keystore 默认在仓库外
+（`D:/dev/android-keys/watermark-release.jks`）。没有这个文件时会退回 debug 签名并在
+Gradle 日志里打一条 warning —— 你自己构建时如果看到它，说明出的不是可发布的包。
+
+`key.properties` 长这样（**不要提交**，`.gitignore` 已排除）：
+
+```properties
+storeFile=D:/dev/android-keys/watermark-release.jks
+storePassword=***
+keyAlias=watermark
+keyPassword=***
+```
+
+> keystore 丢了就没法再给已装的用户推更新 —— 请连同口令一起备份到仓库之外的地方。
 
 ---
 
