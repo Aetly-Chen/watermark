@@ -1,7 +1,7 @@
 name: watermark_remover
 description: "水印工坊 —— 本地优先的图片与视频去水印 App（Android 第一阶段）"
 publish_to: 'none'
-version: 0.1.1+2
+version: 0.1.2+3
 
 environment:
   sdk: ^3.13.5
