@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
@@ -160,54 +161,78 @@ class _VideoPreviewDialogState extends ConsumerState<VideoPreviewDialog>
           color: t.media,
           borderRadius: BorderRadius.circular(16),
         ),
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _Header(
-              title: widget.title ?? '预览',
-              onClose: () => Navigator.of(context).pop(),
-            ),
-            const SizedBox(height: 4),
-            if (_error != null)
-              _ErrorBox(message: _error!)
-            else if (handle == null)
-              const _Loading()
-            else ...[
-              // 画面高度封顶：竖屏手机上视频按宽度铺满只有 190 高，
-              // 但横屏 / 矮视口下 AspectRatio 会算出一个超过可用高度的值，
-              // 把控制条顶出对话框（实测溢出 49px）。AspectRatio 在
-              // maxHeight 约束下会自己缩宽度，比例不会变形。
-              ConstrainedBox(
-                constraints: BoxConstraints(
-                  maxHeight: MediaQuery.sizeOf(context).height * 0.55,
-                ),
-                child: _Stage(
-                  textureId: handle.textureId,
-                  aspectRatio: handle.aspectRatio,
-                  playing: _playing,
-                  onTap: _togglePlay,
-                ),
+        // 画面高度按**对话框自己的可用高度**算，不看 MediaQuery ——
+        // 对话框里拿到的 MediaQuery 未必是当前视口（测试环境就差了 360 vs 600）。
+        child: LayoutBuilder(
+          builder: (context, panel) {
+            final avail = panel.maxHeight;
+            // 扣掉标题 / 控制条 / 说明这几块固定开销（实测约 150dp）。
+            // 矮视口（横屏）必须扣，否则一定溢出：画面吃满对话框、控制条整块消失。
+            final stageMaxH = avail.isFinite
+                ? math.max(72.0, math.min(avail * 0.55, avail - 150))
+                : 220.0;
+            final ratio = handle?.aspectRatio ?? 16 / 9;
+            var stageW = panel.maxWidth;
+            var stageH = stageW / ratio;
+            if (stageH > stageMaxH) {
+              stageH = stageMaxH;
+              stageW = stageH * ratio;
+            }
+            // 兜底：再矮也让它滚，而不是把控制条裁掉。
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Header(
+                    title: widget.title ?? '预览',
+                    onClose: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(height: 4),
+                  if (_error != null)
+                    _ErrorBox(message: _error!)
+                  else if (handle == null)
+                    const _Loading()
+                  else ...[
+                    // 用 SizedBox 把尺寸算死，不靠 AspectRatio 自己缩：
+                    // Column 是 stretch，子项拿到的是**紧宽度**，AspectRatio 在紧宽度下
+                    // 没有收缩余地，只能按 maxHeight 被裁 —— 真机横屏实测画面被拉成
+                    // 3.46:1（正常 1.78），控制条被顶出对话框。
+                    // Center 把宽度约束放松，画面才能按比例缩窄。
+                    Center(
+                      child: SizedBox(
+                        width: stageW,
+                        height: stageH,
+                        child: _Stage(
+                          textureId: handle.textureId,
+                          aspectRatio: handle.aspectRatio,
+                          playing: _playing,
+                          onTap: _togglePlay,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(height: 8),
+                    _Controls(
+                      position: _position,
+                      duration: handle.duration,
+                      playing: _playing,
+                      onToggle: _togglePlay,
+                      onSeek: _seekTo,
+                    ),
+                  ],
+                  const SizedBox(height: 4),
+                  Text(
+                    '画面来自刚修好的文件，声音与进度都在。',
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      color: t.cream.withValues(alpha: 0.55),
+                    ),
+                  ),
+                ],
               ),
-              const SizedBox(height: 8),
-              _Controls(
-                position: _position,
-                duration: handle.duration,
-                playing: _playing,
-                onToggle: _togglePlay,
-                onSeek: _seekTo,
-              ),
-            ],
-            const SizedBox(height: 4),
-            Text(
-              '画面来自刚修好的文件，声音与进度都在。',
-              textAlign: TextAlign.center,
-              style: TextStyle(
-                fontSize: 10.5,
-                color: t.cream.withValues(alpha: 0.55),
-              ),
-            ),
-          ],
+            );
+          },
         ),
       ),
     );

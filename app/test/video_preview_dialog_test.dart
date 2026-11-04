@@ -78,6 +78,42 @@ void main() {
     expect(previewer.closed, isTrue, reason: '关掉对话框必须释放原生播放器');
   });
 
+  testWidgets('横屏矮视口：画面保持比例，控制条不被挤出屏幕', (tester) async {
+    // 真机 1080×2340 转横屏后的逻辑尺寸。回归的真机缺陷：
+    // 画面被拉成 3.46:1（正常 1.78），进度条与暂停按钮整块被挤出对话框底部。
+    await tester.binding.setSurfaceSize(const Size(780, 360));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final previewer = _FakePreviewer();
+    await pumpDialog(tester, previewer: previewer);
+    // 对话框有入场动画（从底部滑上来），60ms 时还没落位，量出来的坐标会偏。
+    // 不能用 pumpAndSettle：位置轮询是 periodic timer，永远 settle 不了。
+    await tester.pump(const Duration(milliseconds: 400));
+
+    final stage = tester.getRect(
+      find.byKey(const ValueKey('preview-texture')),
+    );
+    expect(stage.width / stage.height, closeTo(960 / 540, 0.05),
+        reason: '画面必须按原比例显示，不能被 Column 的紧宽度拉变形');
+    expect(stage.bottom, lessThanOrEqualTo(360),
+        reason: '画面不许超出屏幕');
+    expect(stage.height, lessThan(360 * 0.6),
+        reason: '画面要给标题和控制条留出空间');
+
+    // 控制条必须落在**对话框面板之内**。
+    // 只比屏幕高度是不够的：内容溢出时被滚动视口裁掉，控件几何位置仍在屏幕里，
+    // 断言照样绿 —— 那正是「看不见但测得过」的假通过。
+    final panel = tester.getRect(find.byKey(const ValueKey('preview-panel')));
+    for (final key in ['preview-toggle', 'preview-seek']) {
+      final r = tester.getRect(find.byKey(ValueKey(key)));
+      expect(r.top, greaterThanOrEqualTo(panel.top), reason: '$key 跑到面板上方了');
+      expect(r.bottom, lessThanOrEqualTo(panel.bottom),
+          reason: '$key 被挤出面板底部（滚动视口外 = 看不到）');
+    }
+
+    await closeDialog(tester);
+  });
+
   testWidgets('打不开：说人话，给出退路，不崩', (tester) async {
     final previewer = _FakePreviewer(fail: true);
     await pumpDialog(tester, previewer: previewer);
