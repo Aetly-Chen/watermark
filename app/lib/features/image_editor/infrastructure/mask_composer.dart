@@ -79,6 +79,29 @@ class MaskComposer {
     }
   }
 
+  /// 只渲染遮罩（不碰源图），按给定的像素尺寸输出 PNG。
+  ///
+  /// 视频没有「一张源图」可以 instantiateImageCodec —— 它的画布是封面帧，
+  /// 尺寸由探测给出。所以这里直接按尺寸画，坐标仍是归一化的那一套。
+  static Future<Uint8List> renderMaskPng({
+    required int width,
+    required int height,
+    required MaskDraft draft,
+  }) async {
+    if (draft.isEmpty) {
+      throw const ProcessingException(
+        ProcessingErrorCode.invalidMask,
+        detail: '还没有框选或涂抹要修的地方',
+      );
+    }
+    final mask = await _renderMask(width, height, draft);
+    try {
+      return await _encode(mask, width, height);
+    } finally {
+      mask.dispose();
+    }
+  }
+
   /// 位图 → PNG 字节
   static Future<Uint8List> _encode(ui.Image image, int width, int height) async {
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);

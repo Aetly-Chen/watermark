@@ -8,6 +8,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/before_after_view.dart';
 import '../../../core/widgets/editor_canvas_layout.dart';
+import '../../../core/widgets/mask_tool_chip.dart';
 import '../../../core/widgets/video_preview_dialog.dart';
 import '../../image_editor/domain/mask_draft.dart';
 import '../../image_editor/presentation/widgets/selection_canvas.dart';
@@ -146,9 +147,59 @@ class VideoEditorPage extends ConsumerWidget {
                   ],
                   const SizedBox(height: 10),
                 ],
-                if (state.selection != null && state.meta != null) ...[
-                  _Hint(text: selectionLabel(state.selection!, state.meta!)),
+                if (state.hasMask && state.meta != null) ...[
+                  _Hint(text: maskLabel(state)),
                   const SizedBox(height: 8),
+                ],
+                if (state.hasVideo) ...[
+                  Row(
+                    children: [
+                      MaskToolChip(
+                        icon: Icons.crop_free_rounded,
+                        label: '矩形',
+                        selected: state.tool == MaskTool.rect,
+                        onTap: state.busy || state.processing
+                            ? null
+                            : () => controller.setTool(MaskTool.rect),
+                      ),
+                      const SizedBox(width: 8),
+                      MaskToolChip(
+                        icon: Icons.brush_outlined,
+                        label: '涂抹',
+                        selected: state.tool == MaskTool.brush,
+                        onTap: state.busy || state.processing
+                            ? null
+                            : () => controller.setTool(MaskTool.brush),
+                      ),
+                      const SizedBox(width: 8),
+                      MaskToolChip(
+                        icon: Icons.auto_fix_normal_outlined,
+                        label: '橡皮',
+                        selected: state.tool == MaskTool.eraser,
+                        onTap: state.busy || state.processing
+                            ? null
+                            : () => controller.setTool(MaskTool.eraser),
+                      ),
+                      const SizedBox(width: 8),
+                      MaskToolChip(
+                        icon: Icons.backspace_outlined,
+                        label: '清除',
+                        selected: false,
+                        onTap:
+                            state.busy || state.processing || state.draft.isEmpty
+                            ? null
+                            : () => controller.setDraft(const MaskDraft.empty()),
+                      ),
+                    ],
+                  ),
+                  if (state.tool != MaskTool.rect) ...[
+                    const SizedBox(height: 8),
+                    _BrushSlider(
+                      value: state.brushSize,
+                      onChanged: state.processing ? null : controller.setBrushSize,
+                    ),
+                  ],
+                  const SizedBox(height: 10),
                 ],
                 if (state.hasVideo && !state.processing) ...[
                   _MotionToggle(
@@ -336,10 +387,10 @@ class _CanvasArea extends StatelessWidget {
             // 视频只用矩形：Mask 要逐帧跟着运动轨迹走，而「涂抹的笔迹」还没有
             // 下发给原生（原型里那句「视频逐帧涂抹」目前没有实现）。
             // 这里也不给涂抹入口 —— 给了就是又一个「看着能点、其实不生效」。
-            draft: MaskDraft(rect: state.selection),
-            tool: MaskTool.rect,
-            brushSize: 26,
-            onDraftChanged: (draft) => controller.setSelection(draft.rect),
+            draft: state.draft,
+            tool: state.tool,
+            brushSize: state.brushSize,
+            onDraftChanged: controller.setDraft,
           ),
         ),
         Positioned(
@@ -658,6 +709,16 @@ class _ErrorBanner extends StatelessWidget {
 /// 用 `display*` 而不是 `width/height`：框是用户在**显示坐标系**里画出来的，
 /// 竖拍视频 `rot=90` 时两者正好相反，用错会把宽高说反。尺寸缺失时只说
 /// 「已框选」，不编一个数字出来。
+String maskLabel(VideoEditState state) {
+  final meta = state.meta;
+  final rect = state.selection;
+  final brushCount = state.strokes.where((s) => !s.erase).length;
+  final parts = <String>[];
+  if (rect != null && meta != null) parts.add(selectionLabel(rect, meta));
+  if (brushCount > 0) parts.add('涂抹 $brushCount 笔');
+  return parts.isEmpty ? '已标注' : parts.join(' · ');
+}
+
 String selectionLabel(Rect rect, VideoMeta meta) {
   const fallback = '已框选';
   if (meta.displayWidth <= 0 || meta.displayHeight <= 0) return fallback;
@@ -665,4 +726,43 @@ String selectionLabel(Rect rect, VideoMeta meta) {
   final h = (rect.height * meta.displayHeight).round();
   if (w <= 0 || h <= 0) return fallback;
   return '已框选 $w × $h';
+}
+
+/// 视频页的笔宽滑杆。
+///
+/// 和图片页同一个语义（归一化到图宽 ×1000 之前的百分比），但视频页只有这一条滑杆，
+/// 没必要为了复用把图片页那套带 label 的 _SliderRow 也搬出来。
+class _BrushSlider extends StatelessWidget {
+  const _BrushSlider({required this.value, required this.onChanged});
+
+  final double value;
+  final ValueChanged<double>? onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final t = AppTokens.of(context);
+    return Row(
+      children: [
+        Text('笔宽', style: TextStyle(fontSize: 11.5, color: t.ink3)),
+        Expanded(
+          child: Slider(
+            value: value.clamp(8, 60),
+            min: 8,
+            max: 60,
+            divisions: 26,
+            label: '${value.round()}',
+            onChanged: onChanged,
+          ),
+        ),
+        SizedBox(
+          width: 34,
+          child: Text(
+            '${value.round()}',
+            textAlign: TextAlign.right,
+            style: TextStyle(fontSize: 11.5, color: t.ink3),
+          ),
+        ),
+      ],
+    );
+  }
 }

@@ -172,6 +172,8 @@ class MediaBridge(
         // 默认关闭：静态水印用一张 Mask 就够；开了追踪反而可能把框带偏
         // （手上没有真水印素材，追得准不准无法用肉眼验证）
         val trackMotion = call.argument<Boolean>("trackMotion") ?: false
+        // 有涂抹时 Dart 会额外给一张遮罩 PNG（显示方向、与封面帧同尺寸）
+        val maskPath = call.argument<String>("maskPath")
         val taskId = call.argument<String>("taskId") ?: "video-${System.nanoTime()}"
 
         if (inputPath == null || outputPath == null ||
@@ -198,6 +200,7 @@ class MediaBridge(
                     inputPath = inputPath,
                     outputPath = outputPath,
                     mask = mask,
+                    maskPath = maskPath,
                     radius = radius,
                     trackMotion = trackMotion,
                     onProgress = { phase, done, total ->

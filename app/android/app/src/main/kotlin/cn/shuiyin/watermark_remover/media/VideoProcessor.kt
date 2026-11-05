@@ -16,6 +16,8 @@ import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint
 import org.opencv.core.Point
 import org.opencv.core.Scalar
+import org.opencv.core.Size
+import org.opencv.imgcodecs.Imgcodecs
 import org.opencv.imgproc.Imgproc
 import java.io.File
 import java.nio.ByteBuffer
@@ -122,6 +124,7 @@ object VideoProcessor {
         mask: RectF,
         radius: Int,
         trackMotion: Boolean = false,
+        maskPath: String? = null,
         onProgress: ((String, Int, Int) -> Unit)? = null,
         isCancelled: (() -> Boolean)? = null,
     ): Map<String, Any> {
@@ -182,6 +185,7 @@ object VideoProcessor {
                 sourceHeight = sourceHeight,
                 estimatedFrames = estimatedFrames,
                 trackMotion = trackMotion,
+                maskPath = maskPath,
                 onProgress = onProgress,
                 isCancelled = isCancelled,
             )
@@ -279,6 +283,7 @@ object VideoProcessor {
         private val sourceHeight: Int,
         private val estimatedFrames: Int,
         private val trackMotion: Boolean,
+        private val maskPath: String?,
         private val onProgress: ((String, Int, Int) -> Unit)?,
         private val isCancelled: (() -> Boolean)?,
     ) {
@@ -307,6 +312,13 @@ object VideoProcessor {
         private var visibleHeight = 0
 
         private lateinit var maskMat: Mat
+
+        /**
+         * 有笔迹时，用户涂抹出来的原始遮罩（**帧坐标系**，与 maskMat 同尺寸）。
+         * 逐帧用累计变换 warpAffine 推过去 —— 矩形走的是「四角变换 + 重填」，
+         * 笔迹是不规则形状，只能整张图变换。
+         */
+        private var maskBase: Mat? = null
         private lateinit var frameBgr: Mat
         private lateinit var scratch: ByteArray
 
@@ -707,6 +719,8 @@ object VideoProcessor {
                 }
                 encoder = null
                 if (this::maskMat.isInitialized) maskMat.release()
+                maskBase?.release()
+                maskBase = null
                 if (this::frameBgr.isInitialized) frameBgr.release()
                 packedMat?.release()
                 packedMat = null
@@ -989,7 +1003,67 @@ object VideoProcessor {
             }
         }
 
+        /**
+         * 读入用户涂抹生成的遮罩 PNG，转成**帧坐标系**下的二值图。
+         *
+         * 三个要点：
+         * 1. 遮罩是在**显示方向**上画的（用户看到的就是那个方向），而解码出来的是原始帧，
+         *    两者差一个 rotation —— 与 [mapMaskToFrame] 用同一套映射：
+         *    90 -> 逆时针 90，180 -> 180，270 -> 顺时针 90。
+         * 2. 缩放用 NEAREST：遮罩是二值的，双线性会造出一圈 128 的灰边，
+         *    那圈灰边既不算遮罩也不算背景，patch 取边界时会拿到脏像素。
+         * 3. 阈值化兜底：PNG 经过压缩可能有轻微色偏，按 127 二分。
+         */
+        private fun loadMaskFile(path: String, w: Int, h: Int): Mat? {
+            val raw = Imgcodecs.imread(path, Imgcodecs.IMREAD_GRAYSCALE) ?: return null
+            if (raw.empty()) {
+                raw.release()
+                return null
+            }
+            var oriented = raw
+            try {
+                Imgproc.threshold(raw, raw, 127.0, 255.0, Imgproc.THRESH_BINARY)
+                oriented = when (((rotation % 360) + 360) % 360) {
+                    90 -> Mat().also { Core.rotate(raw, it, Core.ROTATE_90_COUNTERCLOCKWISE) }
+                    180 -> Mat().also { Core.rotate(raw, it, Core.ROTATE_180) }
+                    270 -> Mat().also { Core.rotate(raw, it, Core.ROTATE_90_CLOCKWISE) }
+                    else -> raw
+                }
+                val out = Mat()
+                Imgproc.resize(
+                    oriented,
+                    out,
+                    Size(w.toDouble(), h.toDouble()),
+                    0.0,
+                    0.0,
+                    Imgproc.INTER_NEAREST,
+                )
+                if (out.empty() || Core.countNonZero(out) == 0) {
+                    out.release()
+                    return null
+                }
+                return out
+            } finally {
+                if (oriented !== raw) oriented.release()
+                raw.release()
+            }
+        }
+
         private fun buildMask(w: Int, h: Int): Mat {
+            // 有笔迹时走「整张遮罩 PNG」这条路：形状不规则，算不出四角。
+            maskPath?.let { path ->
+                loadMaskFile(path, w, h)?.let { mat ->
+                    maskBase = mat
+                    val copy = mat.clone()
+                    Log.i(
+                        TAG,
+                        "mask 来自 PNG: " + path + " -> " + w + "x" + h +
+                            " px=" + Core.countNonZero(copy) + " rot=" + rotation,
+                    )
+                    return copy
+                }
+                Log.w(TAG, "maskPath 给了但读不出: " + path + " —— 退回按选框建 Mask")
+            }
             val frac = mapMaskToFrame(normalizedMask, rotation, w, h)
             val left = (frac.left * w).toInt().coerceIn(0, w - 1)
             val top = (frac.top * h).toInt().coerceIn(0, h - 1)
@@ -1146,6 +1220,29 @@ object VideoProcessor {
 
         /** 把首帧的框按累计变换推到当前帧，重画 Mask（四边形，fillConvexPoly）。 */
         private fun drawMaskQuad() {
+            // 笔迹遮罩：整张图跟着累计变换走
+            val base = maskBase
+            if (base != null) {
+                val m = Mat(2, 3, CvType.CV_64F)
+                // Kotlin 里 put(0,0,DoubleArray) 对不上 vararg 重载，逐个写
+                for (i in 0 until 6) {
+                    m.put(i / 3, i % 3, cumulative[i])
+                }
+                try {
+                    Imgproc.warpAffine(
+                        base,
+                        maskMat,
+                        m,
+                        Size(base.cols().toDouble(), base.rows().toDouble()),
+                        Imgproc.INTER_NEAREST,
+                        Core.BORDER_CONSTANT,
+                        Scalar(0.0),
+                    )
+                } finally {
+                    m.release()
+                }
+                return
+            }
             if (maskQuad.isEmpty()) return
             val pts = Array(maskQuad.size) { i ->
                 val p = maskQuad[i]

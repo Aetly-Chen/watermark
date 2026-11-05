@@ -16,6 +16,8 @@ import '../../../core/processing/processing_error.dart';
 import '../../history/application/history_providers.dart';
 import '../../history/domain/history_format.dart';
 import '../../history/domain/history_item.dart';
+import '../../image_editor/domain/mask_draft.dart';
+import '../../image_editor/infrastructure/mask_composer.dart';
 
 part 'video_edit_controller.g.dart';
 
@@ -31,6 +33,9 @@ class VideoEditState {
     this.poster,
     this.posterSize,
     this.selection,
+    this.strokes = const <MaskStroke>[],
+    this.tool = MaskTool.rect,
+    this.brushSize = 26,
     this.busy = false,
     this.error,
     this.processing = false,
@@ -61,6 +66,24 @@ class VideoEditState {
 
   /// 归一化选区（0..1，相对**封面帧**）
   final Rect? selection;
+
+  /// 涂抹笔迹。和 [selection] **可以共存**：先用框罩一片，再用橡皮收边。
+  ///
+  /// 以前视频页只给矩形，理由是「笔迹要逐帧跟着运动轨迹走，而这条还没做」。
+  /// 现在原生已经能按遮罩 PNG 修（并跟着累计变换 warp），所以放开了。
+  final List<MaskStroke> strokes;
+
+  /// 当前工具。视频页和图片页用同一套：矩形 / 涂抹 / 橡皮。
+  final MaskTool tool;
+
+  /// 笔宽（归一化到**图宽**的百分比 * 1000，与图片页同一语义）。
+  final double brushSize;
+
+  /// 当前草稿。矩形与笔迹合成一个对象，和 `MaskComposer` 吃的是同一个类型。
+  MaskDraft get draft => MaskDraft(rect: selection, strokes: strokes);
+
+  /// 有没有**真正要修**的地方（只画橡皮不算）。判据与 Mask 生成共用一份。
+  bool get hasMask => draft.hasMask;
 
   final bool busy;
   final String? error;
@@ -108,7 +131,7 @@ class VideoEditState {
   bool get hasVideo => poster != null && meta != null;
   bool get canSave => result != null && !saving && savedUri == null;
   bool get canSelect => hasVideo && !busy && !processing;
-  bool get canRepair => selection != null && meta != null && !processing && !busy;
+  bool get canRepair => hasMask && meta != null && !processing && !busy;
 
   /// 进度 0..1。总数未知时返回 null —— 不拿假数字喂进度条。
   double? get progressFraction {
@@ -128,6 +151,9 @@ class VideoEditState {
     Uint8List? poster,
     Size? posterSize,
     Rect? selection,
+    List<MaskStroke>? strokes,
+    MaskTool? tool,
+    double? brushSize,
     bool? busy,
     String? error,
     bool? processing,
@@ -157,6 +183,11 @@ class VideoEditState {
       poster: poster ?? this.poster,
       posterSize: posterSize ?? this.posterSize,
       selection: clearSelection ? null : (selection ?? this.selection),
+      strokes: clearSelection
+          ? const <MaskStroke>[]
+          : (strokes ?? this.strokes),
+      tool: tool ?? this.tool,
+      brushSize: brushSize ?? this.brushSize,
       busy: busy ?? this.busy,
       error: clearError ? null : (error ?? this.error),
       processing: processing ?? this.processing,
@@ -276,6 +307,21 @@ class VideoEditController extends _$VideoEditController {
     }
   }
 
+  void setDraft(MaskDraft next) {
+    state = state.copyWith(
+      selection: next.rect,
+      strokes: next.strokes,
+      clearSelection: next.rect == null && next.strokes.isEmpty,
+      clearError: true,
+      clearResult: true,
+    );
+  }
+
+  void setTool(MaskTool value) => state = state.copyWith(tool: value);
+
+  void setBrushSize(double value) =>
+      state = state.copyWith(brushSize: value.clamp(8, 60));
+
   void setSelection(Rect? normalized) {
     state = state.copyWith(selection: normalized, clearError: true, clearResult: true);
   }
@@ -296,9 +342,13 @@ class VideoEditController extends _$VideoEditController {
   /// 用 `mutations` 之外的手动赋值（这里没有用 AsyncNotifier），所以要在 finally 里
   /// 保证 processing 一定归位 —— 否则页面会永远卡在「修复中」。
   Future<void> startRepair({int radius = 4}) async {
-    final selection = state.selection;
+    final draft = state.draft;
     final videoPath = state.videoPath;
-    if (selection == null || videoPath == null || state.processing) return;
+    if (!draft.hasMask || videoPath == null || state.processing) return;
+    // 只有笔迹没框时，给原生一个包裹笔迹的矩形当兜底：
+    // 遮罩 PNG 万一读不出来，原生会退回按这个框修，而不是整片不修。
+    final selection = draft.rect ?? _boundsOfStrokes(draft.strokes);
+    if (selection == null) return;
 
     final taskId = 'task-${DateTime.now().microsecondsSinceEpoch}';
     state = state.copyWith(
@@ -315,8 +365,21 @@ class VideoEditController extends _$VideoEditController {
       clearSave: true,
     );
 
+    String? maskPath;
     try {
       final dir = await getTemporaryDirectory();
+      // 有笔迹就把遮罩画成 PNG 交给原生 —— 不规则形状没法用矩形表达。
+      final posterSize = state.posterSize;
+      if (draft.strokes.isNotEmpty && posterSize != null) {
+        final bytes = await MaskComposer.renderMaskPng(
+          width: posterSize.width.round(),
+          height: posterSize.height.round(),
+          draft: draft,
+        );
+        final maskFile = File('${dir.path}/mask_$taskId.png');
+        await maskFile.writeAsBytes(bytes, flush: true);
+        maskPath = maskFile.path;
+      }
       final outputPath =
           '${dir.path}/fixed_${DateTime.now().millisecondsSinceEpoch}.mp4';
       final result = await ref
@@ -327,6 +390,7 @@ class VideoEditController extends _$VideoEditController {
             selection: selection,
             radius: radius,
             trackMotion: state.trackMotion,
+            maskPath: maskPath,
             taskId: taskId,
             onProgress: (phase, done, total) {
               if (state.taskId != taskId) return;
@@ -367,7 +431,33 @@ class VideoEditController extends _$VideoEditController {
         error: '视频修复失败。可以缩短片段或换一个视频；内存不够时大视频也会失败。',
         clearTask: true,
       );
+    } finally {
+      if (maskPath != null) {
+        // 遮罩是中间产物，原生已经读完；不删会在 cache 里越攒越多
+        try {
+          await File(maskPath).delete();
+        } catch (_) {
+          // 删不掉不影响结果
+        }
+      }
     }
+  }
+
+  /// 只有笔迹时，给原生兜底用的归一化包围盒。
+  static Rect? _boundsOfStrokes(List<MaskStroke> strokes) {
+    final acts = strokes.where((s) => !s.erase && s.points.isNotEmpty);
+    if (acts.isEmpty) return null;
+    var l = 1.0, t = 1.0, r = 0.0, b = 0.0;
+    for (final stroke in acts) {
+      for (final p in stroke.points) {
+        if (p.dx < l) l = p.dx;
+        if (p.dy < t) t = p.dy;
+        if (p.dx > r) r = p.dx;
+        if (p.dy > b) b = p.dy;
+      }
+    }
+    if (r <= l || b <= t) return null;
+    return Rect.fromLTRB(l, t, r, b);
   }
 
   /// 取输出视频的**首帧**，给结果页做修复前后对比。

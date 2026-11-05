@@ -8,6 +8,7 @@ import '../../../core/widgets/app_button.dart';
 import '../../../core/widgets/app_card.dart';
 import '../../../core/widgets/before_after_view.dart';
 import '../../../core/widgets/editor_canvas_layout.dart';
+import '../../../core/widgets/mask_tool_chip.dart';
 import '../application/image_edit_controller.dart';
 import '../domain/mask_draft.dart';
 import 'widgets/selection_canvas.dart';
@@ -78,7 +79,7 @@ class ImageEditorPage extends ConsumerWidget {
                   // 而且它是个假按钮（onTap 给的空函数）—— 原型上明明是四个工具。
                   Row(
                     children: [
-                      _ToolChip(
+                      MaskToolChip(
                         icon: Icons.crop_free_rounded,
                         label: '矩形',
                         selected: state.tool == MaskTool.rect,
@@ -87,7 +88,7 @@ class ImageEditorPage extends ConsumerWidget {
                             : () => controller.setTool(MaskTool.rect),
                       ),
                       const SizedBox(width: 8),
-                      _ToolChip(
+                      MaskToolChip(
                         icon: Icons.brush_outlined,
                         label: '涂抹',
                         selected: state.tool == MaskTool.brush,
@@ -96,7 +97,7 @@ class ImageEditorPage extends ConsumerWidget {
                             : () => controller.setTool(MaskTool.brush),
                       ),
                       const SizedBox(width: 8),
-                      _ToolChip(
+                      MaskToolChip(
                         icon: Icons.auto_fix_normal_outlined,
                         label: '橡皮',
                         selected: state.tool == MaskTool.eraser,
@@ -105,7 +106,7 @@ class ImageEditorPage extends ConsumerWidget {
                             : () => controller.setTool(MaskTool.eraser),
                       ),
                       const SizedBox(width: 8),
-                      _ToolChip(
+                      MaskToolChip(
                         icon: Icons.backspace_outlined,
                         label: '清除',
                         selected: false,
@@ -339,51 +340,6 @@ class _Meta extends StatelessWidget {
   }
 }
 
-class _ToolChip extends StatelessWidget {
-  const _ToolChip({
-    required this.icon,
-    required this.label,
-    required this.selected,
-    required this.onTap,
-  });
-
-  final IconData icon;
-  final String label;
-  final bool selected;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    final t = AppTokens.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? t.flameSoft : t.paper,
-          borderRadius: BorderRadius.circular(AppTokens.radiusButton),
-          border: Border.all(color: selected ? t.flame : t.line),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: selected ? t.flameTxt : t.ink2),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? t.flameTxt : t.ink2,
-              ),
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-}
 
 class _ErrorBanner extends StatelessWidget {
   const _ErrorBanner({required this.message});

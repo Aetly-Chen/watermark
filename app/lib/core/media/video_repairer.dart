@@ -179,6 +179,12 @@ class VideoRepairer {
     // 实测 inpaint 只占单帧几毫秒，这点开销换观感划算。
     int radius = 6,
     bool trackMotion = false,
+    /// 用户涂抹生成的遮罩 PNG（**显示方向**、与封面帧同尺寸）。
+    ///
+    /// 传了它原生就按这张图修（形状不规则时只能这样）；不传仍按 [selection]
+    /// 画矩形，行为与以前完全一致。旋转视频的「显示→编码」朝向转换在原生做，
+    /// 因为只有那边知道解码器的真实帧尺寸。
+    String? maskPath,
     String? taskId,
     void Function(VideoRepairPhase phase, int done, int total)? onProgress,
   }) async {
@@ -212,6 +218,7 @@ class VideoRepairer {
         'bottom': selection.bottom,
         'radius': radius,
         'trackMotion': trackMotion,
+        'maskPath': maskPath,
         'taskId': id,
       });
       if (raw == null) {
