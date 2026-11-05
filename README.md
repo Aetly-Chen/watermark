@@ -71,14 +71,21 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.1.3-arm64.apk    51 MB
-SHA-256  1686cafead39a5e1e99c96197a5129c4cdfe65950a27bc3235a959cc9cb3119a
+watermark-remover-v0.2.0-arm64.apk    51 MB
+SHA-256  5b2a56a6f7623c60b306217afe2efc3e52e21a53bb15de2469ba7dd924a9584d
 ```
 
 > 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.2.0 变更**
+
+- **视频页支持涂抹**：和图片页同一排工具（矩形 / 涂抹 / 橡皮 / 清除），
+  笔迹与矩形可共存。遮罩按 PNG 下发给原生，跟随模式下用同一个累计仿射矩阵
+  `warpAffine` 推整张遮罩 —— 不再是「只有矩形」。
+- 原生 `maskPath` 为 `null` 时走原来的矩形路径，老行为零改动。
 
 **v0.1.3 变更**
 
