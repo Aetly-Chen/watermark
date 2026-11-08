@@ -1023,6 +1023,12 @@ object VideoProcessor {
             var oriented = raw
             try {
                 Imgproc.threshold(raw, raw, 127.0, 255.0, Imgproc.THRESH_BINARY)
+                // 方向由**坐标定义**推出来，再用真机验证过：
+                // 显示(540×960) → 帧(960×540) 是 frame_x = 959 − display_y、frame_y = display_x，
+                // 这正是 Core.rotate 的 ROTATE_90_CLOCKWISE（dst(x,y)=src(H−1−y, x)）。
+                // 与 mapMaskToFrame 里 270 的 (u,v)→(1−v,u) 是同一个映射。
+                // ⚠ 我一度把它「修正」成 CCW（以为推反了），真机上修复痕迹整块跑到画面
+                // 对角的右下角 —— 差 180°。判据是「改动区域落在遮罩该在的地方」，不是肉眼。
                 oriented = when (((rotation % 360) + 360) % 360) {
                     90 -> Mat().also { Core.rotate(raw, it, Core.ROTATE_90_COUNTERCLOCKWISE) }
                     180 -> Mat().also { Core.rotate(raw, it, Core.ROTATE_180) }
