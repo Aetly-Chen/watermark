@@ -71,14 +71,20 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.2.0-arm64.apk    51 MB
-SHA-256  5b2a56a6f7623c60b306217afe2efc3e52e21a53bb15de2469ba7dd924a9584d
+watermark-remover-v0.2.1-arm64.apk    51 MB
+SHA-256  8b42f09ae0a2c104da64db1fd1d2fa993d64b485c7e74c768aedc114de9edaba
 ```
 
 > 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.2.1 变更**
+
+- **横屏预览改成「画面在左、控制在右」**：竖排时控制条和说明要占掉约 150dp，
+  而横屏总共才 280dp 可用，画面被压到 203×114dp，780dp 宽的面板大半空着。
+  并排之后真机实测画面 **381×214dp**（面积 3.5 倍），比例仍是 1.78，竖屏布局未变。
 
 **v0.2.0 变更**
 

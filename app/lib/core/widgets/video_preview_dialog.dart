@@ -172,11 +172,87 @@ class _VideoPreviewDialogState extends ConsumerState<VideoPreviewDialog>
                 ? math.max(72.0, math.min(avail * 0.55, avail - 150))
                 : 220.0;
             final ratio = handle?.aspectRatio ?? 16 / 9;
-            var stageW = panel.maxWidth;
+            // 宽视口（横屏 / 平板）：控制条挪到画面右侧。
+            // 竖排时控制条 + 说明要占掉约 150dp，而横屏总共才 280dp 可用，
+            // 画面被压到 124×71dp，780dp 宽的面板大半空着（真机实测）。
+            // 并排之后画面能吃掉剩余高度，控制条也不再跟它抢竖直空间。
+            final wide =
+                panel.maxWidth >= 560 && panel.maxWidth > panel.maxHeight * 1.2;
+            const sideWidth = 232.0;
+            var stageW = wide
+                ? math.max(120.0, panel.maxWidth - sideWidth - 12)
+                : panel.maxWidth;
             var stageH = stageW / ratio;
-            if (stageH > stageMaxH) {
-              stageH = stageMaxH;
+            // 宽视口只扣标题（约 64dp）；窄视口还要扣控制条和说明（约 150dp）
+            final heightBudget = wide
+                ? (avail.isFinite ? math.max(80.0, avail - 64) : 260.0)
+                : stageMaxH;
+            if (stageH > heightBudget) {
+              stageH = heightBudget;
               stageW = stageH * ratio;
+            }
+            if (wide) {
+              return Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  _Header(
+                    title: widget.title ?? '预览',
+                    onClose: () => Navigator.of(context).pop(),
+                  ),
+                  const SizedBox(height: 6),
+                  if (_error != null)
+                    _ErrorBox(message: _error!)
+                  else if (handle == null)
+                    const _Loading()
+                  else
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
+                      children: [
+                        Expanded(
+                          child: Center(
+                            child: SizedBox(
+                              width: stageW,
+                              height: stageH,
+                              child: _Stage(
+                                textureId: handle.textureId,
+                                aspectRatio: handle.aspectRatio,
+                                playing: _playing,
+                                onTap: _togglePlay,
+                              ),
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 12),
+                        SizedBox(
+                          width: sideWidth,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: CrossAxisAlignment.stretch,
+                            children: [
+                              _Controls(
+                                position: _position,
+                                duration: handle.duration,
+                                playing: _playing,
+                                onToggle: _togglePlay,
+                                onSeek: _seekTo,
+                              ),
+                              const SizedBox(height: 10),
+                              Text(
+                                '画面来自刚修好的文件，声音与进度都在。',
+                                textAlign: TextAlign.center,
+                                style: TextStyle(
+                                  fontSize: 10.5,
+                                  color: t.cream.withValues(alpha: 0.55),
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                      ],
+                    ),
+                ],
+              );
             }
             // 兜底：再矮也让它滚，而不是把控制条裁掉。
             return SingleChildScrollView(

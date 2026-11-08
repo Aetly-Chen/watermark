@@ -97,8 +97,12 @@ void main() {
         reason: '画面必须按原比例显示，不能被 Column 的紧宽度拉变形');
     expect(stage.bottom, lessThanOrEqualTo(360),
         reason: '画面不许超出屏幕');
-    expect(stage.height, lessThan(360 * 0.6),
-        reason: '画面要给标题和控制条留出空间');
+    // 宽视口下控制条在右侧，画面应该吃掉横向空间。
+    // 竖排那版只能缩到约 203×114（780dp 宽的面板大半空着），这里必须明显更宽。
+    expect(stage.width, greaterThan(300),
+        reason: '横屏要横着用：画面宽度应该远超竖排那版的 ~203');
+    expect(stage.height, lessThanOrEqualTo(360 - 80),
+        reason: '画面不许超过对话框可用高度');
 
     // 控制条必须落在**对话框面板之内**。
     // 只比屏幕高度是不够的：内容溢出时被滚动视口裁掉，控件几何位置仍在屏幕里，
