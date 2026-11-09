@@ -30,10 +30,10 @@ void main() {
       const w = 200;
       const h = 100;
       // 在 (0.1,0.1)-(0.3,0.3) 涂一笔
-      final draft = MaskDraft(
+      const draft = MaskDraft(
         strokes: <MaskStroke>[
           MaskStroke(
-            points: const <Offset>[
+            points: <Offset>[
               Offset(0.1, 0.1),
               Offset(0.3, 0.3),
             ],
@@ -60,17 +60,17 @@ void main() {
     test('橡皮把涂过的地方擦回去', () async {
       const w = 120;
       const h = 120;
-      final draft = MaskDraft(
+      const draft = MaskDraft(
         strokes: <MaskStroke>[
           // 先涂满一条横线
           MaskStroke(
-            points: const <Offset>[Offset(0.1, 0.5), Offset(0.9, 0.5)],
+            points: <Offset>[Offset(0.1, 0.5), Offset(0.9, 0.5)],
             width: 0.2,
             erase: false,
           ),
           // 再从中间擦掉
           MaskStroke(
-            points: const <Offset>[Offset(0.4, 0.5), Offset(0.6, 0.5)],
+            points: <Offset>[Offset(0.4, 0.5), Offset(0.6, 0.5)],
             width: 0.2,
             erase: true,
           ),
