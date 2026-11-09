@@ -71,14 +71,21 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.2.1-arm64.apk    51 MB
-SHA-256  8b42f09ae0a2c104da64db1fd1d2fa993d64b485c7e74c768aedc114de9edaba
+watermark-remover-v0.2.2-arm64.apk    51 MB
+SHA-256  a05a16f61b2fc54e7d2bd80e92b2c97680e0c480683835eac53945324a7280a2
 ```
 
 > 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.2.2 变更**
+
+- **Android 9 及以下能保存了**：之前清单里一个权限都没声明，
+  老系统点「保存到相册」必然失败，还只说「检查存储空间」。现在按版本申请
+  `WRITE_EXTERNAL_STORAGE`（限 `maxSdkVersion=28`，新系统不会白弹授权），
+  被拒时直接告诉用户去「设置 → 应用 → 水印工坊 → 权限」打开。
 
 **v0.2.1 变更**
 
