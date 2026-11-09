@@ -4,6 +4,8 @@ import android.graphics.SurfaceTexture
 import android.media.MediaPlayer
 import android.os.Handler
 import android.os.Looper
+import android.os.SystemClock
+import android.util.Log
 import android.view.Surface
 import io.flutter.embedding.engine.plugins.FlutterPlugin
 import io.flutter.embedding.engine.plugins.FlutterPlugin.FlutterPluginBinding
@@ -11,6 +13,9 @@ import io.flutter.plugin.common.MethodCall
 import io.flutter.plugin.common.MethodChannel
 import io.flutter.plugin.common.MethodChannel.MethodCallHandler
 import io.flutter.view.TextureRegistry
+
+/** 预览插件的日志标签（探针与失败都走它）。 */
+private const val TAG = "WmVideoPreview"
 
 /**
  * 修好的视频预览播放器。
@@ -139,9 +144,11 @@ class VideoPreviewPlugin : FlutterPlugin, MethodCallHandler {
                     // SurfaceTexture 的默认缓冲尺寸要跟视频一致，
                     // 否则画面会被拉伸（Texture 只会按我们给的宽高比铺满）
                     if (w > 0 && h > 0) st.setDefaultBufferSize(w, h)
-                    ready.start()
                     val s2 = Session(e, ready, s)
                     session = s2
+                    // 走 play() 而不是直接 ready.start()：探针挂在 play() 里，
+                    // 直接调 start() 会让「打开就自动播」这条路径漏掉统计
+                    s2.play()
                     result.success(
                         mapOf(
                             "textureId" to e.id(),
@@ -168,12 +175,20 @@ class VideoPreviewPlugin : FlutterPlugin, MethodCallHandler {
         private val player: MediaPlayer,
         private val surface: Surface,
     ) {
+        private val probe = FrameProbe(entry.surfaceTexture())
+
         fun play() {
-            if (!player.isPlaying) player.start()
+            if (!player.isPlaying) {
+                player.start()
+                probe.start()
+            }
         }
 
         fun pause() {
-            if (player.isPlaying) player.pause()
+            if (player.isPlaying) {
+                player.pause()
+                probe.stop()
+            }
         }
 
         fun seekTo(ms: Long) {
@@ -187,6 +202,7 @@ class VideoPreviewPlugin : FlutterPlugin, MethodCallHandler {
         }
 
         fun close() {
+            probe.stop()
             try {
                 player.stop()
             } catch (ignored: Throwable) {
@@ -197,6 +213,113 @@ class VideoPreviewPlugin : FlutterPlugin, MethodCallHandler {
             }
             surface.release()
             entry.release()
+        }
+    }
+
+    /**
+     * 帧到达探针：只读 [SurfaceTexture.getTimestamp]，每 50ms 采一次。
+     *
+     * ## 为什么需要它
+     *
+     * 预览是 `MediaPlayer` 直接把帧送进 SurfaceTexture → Flutter 的 `Texture`，
+     * **没有独立图层**，所以 `dumpsys gfxinfo`（只统计 App 自己的绘制）和
+     * `dumpsys SurfaceFlinger --latency`（要图层名）都看不见视频帧。
+     * 之前「循环接缝会不会打盹」只能靠连拍截图猜（精度 930ms），
+     * 100~500ms 级别的卡顿根本量不出来。
+     *
+     * ## 为什么不挂 OnFrameAvailableListener
+     *
+     * `setOnFrameAvailableListener` 是**单槽**的，Flutter 的
+     * `SurfaceTextureEntry` 已经占用了它去驱动引擎。我们再设一次会把引擎的顶掉，
+     * 画面直接不动。所以这里只做轮询：`getTimestamp()` 由 `updateTexImage` 刷新，
+     * 引擎刷一次，我们读一次，互不干扰。
+     *
+     * 没有新帧时时间戳不变 —— 这正是判据：**时间戳连续不变超过阈值 = 卡了**。
+     *
+     * 只打异常和结束时的汇总，正常播放时一行都不输出。
+     */
+    private class FrameProbe(private val st: SurfaceTexture) {
+        private val handler = Handler(Looper.getMainLooper())
+        private var lastTs = -1L
+        private var lastChangeAt = 0L
+        private var frames = 0
+        private var maxGapMs = 0L
+        private var slowCount = 0
+        private var stallCount = 0
+        private var running = false
+
+        private val tick = object : Runnable {
+            override fun run() {
+                if (!running) return
+                val ts = try {
+                    st.timestamp
+                } catch (e: Throwable) {
+                    -1L
+                }
+                val now = SystemClock.elapsedRealtime()
+                if (ts > 0 && ts != lastTs) {
+                    if (lastChangeAt > 0) {
+                        val gap = now - lastChangeAt
+                        if (gap > SLOW_GAP_MS) {
+                            slowCount++
+                            // **媒体时间增量**是判「真停顿」还是「采样漏掉」的关键：
+                            //   mediaDelta ≈ 0  → 画面真的冻住了（解码器 / 循环在 flush）
+                            //   mediaDelta ≈ gap → 播放时间正常推进，是我 50ms 采样漏了帧
+                            //
+                            // 这条判据是后加的，加之前我差点把「7 次 202ms 空档」当成
+                            // 「每次循环卡 200ms」报出去 —— 其实媒体增量也是 200ms 上下，
+                            // 播放根本没停。**没有媒体增量就不要对空档下结论。**
+                            val mediaDelta = (ts - lastTs) / 1_000_000
+                            val stall = mediaDelta < gap / 2
+                            // **只在真停顿时出声**：50ms 采样天然会漏掉 30fps 的帧，
+                            // 那些「空档」媒体增量都≈间隔，打出来只会刷屏、还会误导人。
+                            // 实测 70 秒 / 约 14 次循环：空档 11 次，真停顿 0 次。
+                            if (stall) {
+                                stallCount++
+                                Log.w(
+                                    TAG,
+                                    "preview 真停顿 ${gap}ms（媒体只推进 ${mediaDelta}ms）",
+                                )
+                            }
+                        }
+                        if (gap > maxGapMs) maxGapMs = gap
+                    }
+                    lastTs = ts
+                    lastChangeAt = now
+                    frames++
+                }
+                handler.postDelayed(this, SAMPLE_MS)
+            }
+        }
+
+        fun start() {
+            if (running) return
+            running = true
+            lastTs = -1L
+            lastChangeAt = 0L
+            frames = 0
+            maxGapMs = 0L
+            slowCount = 0
+            stallCount = 0
+            handler.post(tick)
+        }
+
+        fun stop() {
+            if (!running) return
+            running = false
+            handler.removeCallbacks(tick)
+            // frames=0 说明这个探针在拿不到时间戳，别拿它的数字当证据
+            Log.i(
+                TAG,
+                "preview 帧统计: 有帧的采样=$frames maxGap=${maxGapMs}ms " +
+                    "空档(>${SLOW_GAP_MS}ms)=$slowCount 其中真停顿=$stallCount" +
+                    "（采样 ${SAMPLE_MS}ms，帧数不能当帧率看）",
+            )
+        }
+
+        private companion object {
+            const val SAMPLE_MS = 50L
+            const val SLOW_GAP_MS = 200L
         }
     }
 }
