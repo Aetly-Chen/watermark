@@ -9,6 +9,13 @@ enum ProcessingErrorCode {
   outOfMemory('out_of_memory', '图片太大，内存不够处理。先裁掉无关部分，或换一张小一点的图'),
   cancelled('cancelled', '任务已取消'),
   nativeFailure('native_failure', '修复引擎出错'),
+
+  /// Android 9 及以下保存到相册需要「存储」权限，用户拒绝（或系统没给）时。
+  /// 话术要指路，因为这是唯一一个用户自己能当场解决掉的失败。
+  permissionDenied(
+    'permission_denied',
+    '没有存储权限，存不进相册。到「设置 → 应用 → 水印工坊 → 权限」里打开后再试',
+  ),
   unknown('unknown', '处理失败');
 
   const ProcessingErrorCode(this.code, this.userMessage);

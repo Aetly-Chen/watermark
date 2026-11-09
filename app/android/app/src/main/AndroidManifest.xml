@@ -1,4 +1,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!--
+      Android 9 及以下（API ≤ 28）往 MediaStore 里写照片 / 视频需要这个运行时权限。
+      Android 10 起走分区存储，插入 MediaStore 不需要任何权限，所以用 maxSdkVersion
+      把它限死在 28 —— 否则新系统上会白弹一个「存储」授权，用户还会怀疑这 App 是不是在乱要权限。
+    -->
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="28" />
     <application
         android:label="水印工坊"
         android:name="${applicationName}"

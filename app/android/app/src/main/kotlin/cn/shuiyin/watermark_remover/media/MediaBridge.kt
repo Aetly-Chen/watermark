@@ -2,6 +2,7 @@ package cn.shuiyin.watermark_remover.media
 
 import android.content.Context
 import android.graphics.RectF
+import android.os.Build
 import android.os.Handler
 import android.os.Looper
 import android.util.Log
@@ -37,6 +38,7 @@ class MediaBridge(
         private const val ERR_OOM = "out_of_memory"
         private const val ERR_CANCELLED = "cancelled"
         private const val ERR_NATIVE = "native_failure"
+        private const val ERR_PERMISSION = "permission_denied"
     }
 
     private val channel = MethodChannel(messenger, CHANNEL_NAME)
@@ -44,7 +46,11 @@ class MediaBridge(
     private val mainHandler = Handler(Looper.getMainLooper())
     private val cancelledTasks = ConcurrentHashMap<String, AtomicBoolean>()
 
-    fun attach() {
+    /** 保存到相册前要它去申请权限；不传就是「没有申请能力」，只在 API ≤ 28 会用到。 */
+    private var permissionDelegate: WritePermissionDelegate? = null
+
+    fun attach(permissionDelegate: WritePermissionDelegate? = null) {
+        this.permissionDelegate = permissionDelegate
         channel.setMethodCallHandler(this)
     }
 
@@ -74,6 +80,40 @@ class MediaBridge(
         }
     }
 
+    /**
+     * API ≤ 28 往 MediaStore 写文件必须先拿到 WRITE_EXTERNAL_STORAGE。
+     *
+     * 之前完全没处理：清单里连权限都没声明，所以 Android 9 及以下的机器点「保存到相册」
+     * 必然抛 SecurityException，落到通用的「保存失败」文案，用户完全不知道是权限的事。
+     *
+     * 拿不到就不往下走 —— 与其让 MediaStore 抛异常，不如提前回一个能指导用户的错误码。
+     */
+    private fun withWritePermission(result: MethodChannel.Result, action: () -> Unit) {
+        val delegate = permissionDelegate
+        if (delegate == null) {
+            // 没装 delegate 只可能是注册顺序出了问题，这时按「老系统无权限」处理更安全
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                action()
+            } else {
+                result.error(ERR_PERMISSION, "缺少存储权限，无法写入相册", null)
+            }
+            return
+        }
+        delegate.ensureWriteStorage { granted ->
+            if (granted) {
+                action()
+            } else {
+                mainHandler.post {
+                    result.error(
+                        ERR_PERMISSION,
+                        "没有存储权限，存不进相册。到「设置 → 应用 → 水印工坊 → 权限」里打开后再试",
+                        null,
+                    )
+                }
+            }
+        }
+    }
+
     /** 保存到相册。回来的是 MediaStore 的 content:// URI。 */
     private fun handleSave(call: MethodCall, result: MethodChannel.Result) {
         val sourcePath = call.argument<String>("sourcePath")
@@ -84,12 +124,19 @@ class MediaBridge(
         val displayName = call.argument<String>("displayName")
             ?: "watermark_${System.currentTimeMillis()}.png"
 
-        executor.execute {
-            try {
-                val uri = GallerySaver.save(context, sourcePath, displayName)
-                mainHandler.post { result.success(uri) }
-            } catch (e: Throwable) {
-                mainHandler.post { result.error(ERR_NATIVE, e.message, null) }
+        withWritePermission(result) {
+            executor.execute {
+                try {
+                    val uri = GallerySaver.save(context, sourcePath, displayName)
+                    mainHandler.post { result.success(uri) }
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "saveImage 权限被拒: ${e.message}", e)
+                    mainHandler.post {
+                        result.error(ERR_PERMISSION, "没有存储权限，存不进相册", e.message)
+                    }
+                } catch (e: Throwable) {
+                    mainHandler.post { result.error(ERR_NATIVE, e.message, null) }
+                }
             }
         }
     }
@@ -104,13 +151,20 @@ class MediaBridge(
         val displayName = call.argument<String>("displayName")
             ?: "watermark_${System.currentTimeMillis()}.mp4"
 
-        executor.execute {
-            try {
-                val uri = GallerySaver.saveVideo(context, sourcePath, displayName)
-                mainHandler.post { result.success(uri) }
-            } catch (e: Throwable) {
-                Log.e(TAG, "saveVideo failed: ${e.javaClass.simpleName}: ${e.message}", e)
-                mainHandler.post { result.error(ERR_NATIVE, e.message, null) }
+        withWritePermission(result) {
+            executor.execute {
+                try {
+                    val uri = GallerySaver.saveVideo(context, sourcePath, displayName)
+                    mainHandler.post { result.success(uri) }
+                } catch (e: SecurityException) {
+                    Log.e(TAG, "saveVideo 权限被拒: ${e.message}", e)
+                    mainHandler.post {
+                        result.error(ERR_PERMISSION, "没有存储权限，存不进相册", e.message)
+                    }
+                } catch (e: Throwable) {
+                    Log.e(TAG, "saveVideo failed: ${e.javaClass.simpleName}: ${e.message}", e)
+                    mainHandler.post { result.error(ERR_NATIVE, e.message, null) }
+                }
             }
         }
     }

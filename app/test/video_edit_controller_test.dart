@@ -8,6 +8,7 @@ import 'package:watermark_remover/core/media/gallery_saver.dart';
 import 'package:watermark_remover/core/media/media_channel.dart';
 import 'package:watermark_remover/core/media/thumbnail_store.dart';
 import 'package:watermark_remover/core/media/video_repairer.dart';
+import 'package:watermark_remover/core/processing/processing_error.dart';
 import 'package:watermark_remover/features/history/application/history_providers.dart';
 import 'package:watermark_remover/features/history/domain/history_item.dart';
 import 'package:watermark_remover/features/history/infrastructure/history_store.dart';
@@ -407,6 +408,24 @@ void main() {
     expect(saver.videoCalls, 1, reason: '连点会让相册里出现两份');
   });
 
+  /// Android 9 及以下没有存储权限时，原生回 `permission_denied`。
+  /// 这条是**唯一一个用户当场能自己解决**的保存失败，文案必须指路，
+  /// 不能落到通用的「保存失败，检查存储空间」。
+  test('保存遇到 permission_denied：文案要指路，不能只说保存失败', () async {
+    final c = await makeContainer(saver: _DeniedSaver());
+    await loadReady(c);
+    await c.read(videoEditControllerProvider.notifier).startRepair();
+
+    await c.read(videoEditControllerProvider.notifier).saveToGallery();
+
+    final state = c.read(videoEditControllerProvider);
+    expect(state.savedUri, isNull);
+    final msg = state.saveError ?? '';
+    expect(msg, contains('存储权限'), reason: '得让用户知道是权限问题');
+    expect(msg, contains('设置'), reason: '得告诉他去哪儿开');
+    expect(msg, isNot(contains('存储空间')), reason: '别提存储空间，会把人带偏');
+  });
+
   /// 历史写盘失败时，刚生成的那张缩略图必须删掉。
   ///
   /// 图片页的 `_record` 早就有这一步（catch 里 remove 掉 orphan），视频这边漏了 ——
@@ -493,4 +512,17 @@ class _SpyThumbnailStore extends ThumbnailStore {
 
   @override
   Future<void> remove(String? path) async => removed.add(path);
+}
+
+/// 模拟 Android ≤ 9 没给存储权限：原生回 `permission_denied`。
+class _DeniedSaver extends GallerySaver {
+  @override
+  Future<String> saveVideo({
+    required String sourcePath,
+    String? displayName,
+  }) async {
+    // **不带 detail**：要走 userMessage 那条兜底，
+    // 这样用例才真的在验「错误码 → 用户话术」这一层映射
+    throw const ProcessingException(ProcessingErrorCode.permissionDenied);
+  }
 }
