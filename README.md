@@ -71,14 +71,21 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.2.2-arm64.apk    51 MB
-SHA-256  a05a16f61b2fc54e7d2bd80e92b2c97680e0c480683835eac53945324a7280a2
+watermark-remover-v0.2.3-arm64.apk    51 MB
+SHA-256  4144da589530920c5ec40b380cf005275887826e534b35fe10ba1bc9a0a10039
 ```
 
 > 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.2.3 变更**
+
+- **预览加了帧到达探针**（只打日志，不影响播放）：每 50ms 读一次
+  `SurfaceTexture.getTimestamp()`，用「媒体时间增量」区分「真停顿」和「采样漏帧」。
+  实测 70 秒 / 约 14 次循环：空档(>200ms) 11 次、**真停顿 0 次** ——
+  之前「循环接缝会打盹」的说法在本仪器下不成立，那只是 50ms 采样漏掉了 30fps 的帧。
 
 **v0.2.2 变更**
 
