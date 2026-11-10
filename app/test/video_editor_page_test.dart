@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watermark_remover/core/media/video_probe.dart';
 import 'package:watermark_remover/core/media/video_repairer.dart';
 import 'package:watermark_remover/core/theme/app_theme.dart';
+import 'package:watermark_remover/core/widgets/mask_tool_chip.dart';
 import 'package:watermark_remover/features/image_editor/domain/mask_draft.dart';
 import 'package:watermark_remover/features/video_editor/application/video_edit_controller.dart';
 import 'package:watermark_remover/features/video_editor/presentation/video_editor_page.dart';
@@ -403,6 +404,45 @@ void main() {
         );
       });
     }
+  });
+
+  /// 撤销在视频页也要有 —— 同一排工具，图片页有而这里没有，用户会以为功能坏了。
+  testWidgets('撤销：没东西可退时禁用', (tester) async {
+    await pumpPage(
+      tester,
+      VideoEditState(
+        videoPath: meta.path,
+        meta: meta,
+        poster: posterBytes,
+        posterSize: const Size(960, 540),
+        selection: const Rect.fromLTRB(0.4, 0.35, 0.58, 0.52),
+        tool: MaskTool.brush,
+      ),
+    );
+    expect(find.text('撤销'), findsOneWidget);
+    final chip = tester.widget<MaskToolChip>(
+      find.widgetWithText(MaskToolChip, '撤销'),
+    );
+    expect(chip.onTap, isNull, reason: '空栈时不能点');
+  });
+
+  testWidgets('撤销：退过一步就可点', (tester) async {
+    await pumpPage(
+      tester,
+      VideoEditState(
+        videoPath: meta.path,
+        meta: meta,
+        poster: posterBytes,
+        posterSize: const Size(960, 540),
+        selection: const Rect.fromLTRB(0.4, 0.35, 0.58, 0.52),
+        tool: MaskTool.brush,
+        undoDepth: 1,
+      ),
+    );
+    final chip = tester.widget<MaskToolChip>(
+      find.widgetWithText(MaskToolChip, '撤销'),
+    );
+    expect(chip.onTap, isNotNull);
   });
 
   testWidgets('手机竖屏 360×800：出结果后不溢出，保存与重新修复都够得着', (tester) async {

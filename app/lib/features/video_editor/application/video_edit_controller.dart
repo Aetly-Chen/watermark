@@ -28,6 +28,7 @@ part 'video_edit_controller.g.dart';
 @immutable
 class VideoEditState {
   const VideoEditState({
+    this.undoDepth = 0,
     this.videoPath,
     this.meta,
     this.poster,
@@ -81,6 +82,11 @@ class VideoEditState {
 
   /// 当前草稿。矩形与笔迹合成一个对象，和 `MaskComposer` 吃的是同一个类型。
   MaskDraft get draft => MaskDraft(rect: selection, strokes: strokes);
+
+  /// 撤销栈深度。为 0 时「撤销」不可点。
+  final int undoDepth;
+
+  bool get canUndo => undoDepth > 0;
 
   /// 有没有**真正要修**的地方（只画橡皮不算）。判据与 Mask 生成共用一份。
   bool get hasMask => draft.hasMask;
@@ -171,6 +177,7 @@ class VideoEditState {
     bool? saving,
     String? savedUri,
     String? saveError,
+    int? undoDepth,
     bool clearSelection = false,
     bool clearError = false,
     bool clearResult = false,
@@ -209,6 +216,7 @@ class VideoEditState {
       saving: saving ?? this.saving,
       savedUri: clearSave ? null : (savedUri ?? this.savedUri),
       saveError: clearSave ? null : (saveError ?? this.saveError),
+      undoDepth: undoDepth ?? this.undoDepth,
     );
   }
 }
@@ -305,6 +313,56 @@ class VideoEditController extends _$VideoEditController {
         error: '读取视频失败。换一个视频试试，或把它转成 MP4（H.264 + AAC）。',
       );
     }
+  }
+
+  /// 撤销栈：每项是「一次手势**开始前**」的选区快照（框 + 笔迹）。
+  ///
+  /// 与图片页同一套理由：画布在 `onPanUpdate` 里每个采样点都会回调 `setDraft`，
+  /// 一次涂抹能产生几十份 —— 按回调记栈，点一次撤销只退一个采样点，看着像没反应。
+  final List<MaskDraft> _undo = <MaskDraft>[];
+  MaskDraft? _gestureStart;
+  static const int _maxUndo = 30;
+
+  void beginGesture() {
+    _gestureStart ??= state.draft;
+  }
+
+  void endGesture() {
+    final start = _gestureStart;
+    _gestureStart = null;
+    if (start == null || start == state.draft) return;
+    _pushUndo(start);
+    state = state.copyWith(undoDepth: _undo.length);
+  }
+
+  void _pushUndo(MaskDraft snapshot) {
+    _undo.add(snapshot);
+    if (_undo.length > _maxUndo) _undo.removeAt(0);
+  }
+
+  /// 退回到上一个手势之前的选区。一并清掉结果 —— 选区变了，旧结果就不对应了。
+  void undo() {
+    if (_undo.isEmpty) return;
+    final previous = _undo.removeLast();
+    _applyDraft(previous, undoDepth: _undo.length);
+  }
+
+  /// 「清除」：整份选区清空，但**可撤销** —— 大动作退不回来更难接受。
+  void clearDraft() {
+    if (state.draft.isEmpty) return;
+    _pushUndo(state.draft);
+    _applyDraft(const MaskDraft.empty(), undoDepth: _undo.length);
+  }
+
+  void _applyDraft(MaskDraft next, {int? undoDepth}) {
+    state = state.copyWith(
+      selection: next.rect,
+      strokes: next.strokes,
+      clearSelection: next.rect == null && next.strokes.isEmpty,
+      undoDepth: undoDepth,
+      clearError: true,
+      clearResult: true,
+    );
   }
 
   void setDraft(MaskDraft next) {

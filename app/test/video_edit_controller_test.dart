@@ -12,6 +12,7 @@ import 'package:watermark_remover/core/processing/processing_error.dart';
 import 'package:watermark_remover/features/history/application/history_providers.dart';
 import 'package:watermark_remover/features/history/domain/history_item.dart';
 import 'package:watermark_remover/features/history/infrastructure/history_store.dart';
+import 'package:watermark_remover/features/image_editor/domain/mask_draft.dart';
 import 'package:watermark_remover/features/video_editor/application/video_edit_controller.dart';
 
 /// 视频控制器的主链路。
@@ -389,6 +390,75 @@ void main() {
     expect(state.error, isNull, reason: '不该给用户报一个他无法处理的错');
     expect(state.resultFrame, isNull);
     expect(state.canSave, isTrue, reason: '结果还是要能存进相册');
+  });
+
+
+  // ---------------- 撤销 ----------------
+  //
+  // 与图片页同一套语义：按**手势**记栈，不按 setDraft 回调记。
+  // 画布在每个采样点都回调一次，按回调记的话点一次撤销只退一个点，看着像没反应。
+
+  MaskDraft strokeAt(double x) => MaskDraft(
+    strokes: <MaskStroke>[
+      MaskStroke(points: <Offset>[Offset(x, 0.2), Offset(x + 0.1, 0.25)], width: 0.05),
+    ],
+  );
+
+  test('手势内改多次只算一步：撤销退回手势开始前', () async {
+    final c = await makeContainer();
+    final ctrl = c.read(videoEditControllerProvider.notifier);
+
+    ctrl.beginGesture();
+    ctrl.setDraft(strokeAt(0.1));
+    ctrl.setDraft(strokeAt(0.2));
+    ctrl.setDraft(strokeAt(0.3));
+    ctrl.endGesture();
+
+    expect(c.read(videoEditControllerProvider).canUndo, isTrue);
+
+    ctrl.undo();
+    expect(
+      c.read(videoEditControllerProvider).draft.isEmpty,
+      isTrue,
+      reason: '应当整笔退掉，而不是退到「涂了一半」',
+    );
+    expect(c.read(videoEditControllerProvider).canUndo, isFalse);
+  });
+
+  test('框选也能撤销：选区回到 null', () async {
+    final c = await makeContainer();
+    final ctrl = c.read(videoEditControllerProvider.notifier);
+
+    ctrl.beginGesture();
+    ctrl.setDraft(const MaskDraft(rect: Rect.fromLTRB(0.1, 0.1, 0.3, 0.3)));
+    ctrl.endGesture();
+
+    expect(c.read(videoEditControllerProvider).selection, isNotNull);
+    ctrl.undo();
+    expect(c.read(videoEditControllerProvider).selection, isNull);
+  });
+
+  test('「清除」可撤销：整份选区退回来', () async {
+    final c = await makeContainer();
+    final ctrl = c.read(videoEditControllerProvider.notifier);
+
+    ctrl.beginGesture();
+    ctrl.setDraft(strokeAt(0.2));
+    ctrl.endGesture();
+
+    ctrl.clearDraft();
+    expect(c.read(videoEditControllerProvider).draft.isEmpty, isTrue);
+
+    ctrl.undo();
+    expect(c.read(videoEditControllerProvider).draft.strokes.length, 1);
+  });
+
+  test('空选区时「清除」不占撤销位', () async {
+    final c = await makeContainer();
+    final ctrl = c.read(videoEditControllerProvider.notifier);
+
+    ctrl.clearDraft();
+    expect(c.read(videoEditControllerProvider).canUndo, isFalse);
   });
 
   test('保存成功：拿到 content:// 就不再重存（相册里不该有两份）', () async {

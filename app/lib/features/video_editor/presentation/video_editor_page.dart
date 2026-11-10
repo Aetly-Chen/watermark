@@ -181,6 +181,15 @@ class VideoEditorPage extends ConsumerWidget {
                             ? null
                             : () => controller.setTool(MaskTool.eraser),
                       ),
+                      // 与图片页一致：先「退一步」，再「全清」
+                      MaskToolChip(
+                        icon: Icons.undo_rounded,
+                        label: '撤销',
+                        selected: false,
+                        onTap: state.busy || state.processing || !state.canUndo
+                            ? null
+                            : controller.undo,
+                      ),
                       MaskToolChip(
                         icon: Icons.backspace_outlined,
                         label: '清除',
@@ -188,7 +197,7 @@ class VideoEditorPage extends ConsumerWidget {
                         onTap:
                             state.busy || state.processing || state.draft.isEmpty
                             ? null
-                            : () => controller.setDraft(const MaskDraft.empty()),
+                            : controller.clearDraft,
                       ),
                     ],
                   ),
@@ -391,6 +400,8 @@ class _CanvasArea extends StatelessWidget {
             tool: state.tool,
             brushSize: state.brushSize,
             onDraftChanged: controller.setDraft,
+            onGestureStart: controller.beginGesture,
+            onGestureEnd: controller.endGesture,
           ),
         ),
         Positioned(
