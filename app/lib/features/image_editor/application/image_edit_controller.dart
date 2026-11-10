@@ -45,6 +45,7 @@ class ImageEditState {
     this.saving = false,
     this.savedUri,
     this.saveError,
+    this.undoDepth = 0,
   });
 
   final Uint8List? source;
@@ -89,6 +90,11 @@ class ImageEditState {
   final String? savedUri;
   final String? saveError;
 
+  /// 撤销栈深度。为 0 时「撤销」不可点 —— 界面不需要知道栈里具体存了什么。
+  final int undoDepth;
+
+  bool get canUndo => undoDepth > 0;
+
   bool get hasImage => source != null;
   bool get hasResult => resultPath != null;
 
@@ -113,6 +119,7 @@ class ImageEditState {
     String? savedUri,
     String? saveError,
     bool clearDraft = false,
+    int? undoDepth,
     bool clearResult = false,
     bool clearError = false,
     bool clearSave = false,
@@ -122,6 +129,7 @@ class ImageEditState {
       sourceName: sourceName ?? this.sourceName,
       imageSize: imageSize ?? this.imageSize,
       draft: clearDraft ? const MaskDraft.empty() : (draft ?? this.draft),
+      undoDepth: undoDepth ?? this.undoDepth,
       tool: tool ?? this.tool,
       brushSize: brushSize ?? this.brushSize,
       radius: radius ?? this.radius,
@@ -227,9 +235,59 @@ class ImageEditController extends _$ImageEditController {
     state = state.copyWith(brushSize: size.clamp(4.0, 80.0));
   }
 
+  /// 撤销栈：每项是「一次手势**开始前**」的草稿快照。
+  ///
+  /// 为什么按手势而不是按 `setDraft` 记：画布在 `onPanUpdate` 里每个点都回调一次，
+  /// 一次涂抹会产生几十份草稿。按回调记栈，用户点一次撤销只是退掉一个采样点，
+  /// 看着像没反应。所以由画布在 `onPanStart/onPanEnd` 上报手势边界。
+  final List<MaskDraft> _undo = <MaskDraft>[];
+
+  /// 本次手势开始时的草稿；手势结束才有意义。
+  MaskDraft? _gestureStart;
+
+  /// 栈深上限：草稿本身很轻（矩形 + 点集），30 步足够覆盖一次涂抹 + 几次改框。
+  static const int _maxUndo = 30;
+
+  void beginGesture() {
+    _gestureStart ??= state.draft;
+  }
+
+  void endGesture() {
+    final start = _gestureStart;
+    _gestureStart = null;
+    if (start == null || start == state.draft) return;
+    _pushUndo(start);
+    state = state.copyWith(undoDepth: _undo.length);
+  }
+
+  void _pushUndo(MaskDraft draft) {
+    _undo.add(draft);
+    if (_undo.length > _maxUndo) _undo.removeAt(0);
+  }
+
+  /// 退回到上一个手势之前的草稿。
+  ///
+  /// 一并清掉结果与错误：草稿变了，旧结果就不再对应当前选区 ——
+  /// 留着会让用户以为「改完框还停在旧结果上」。
+  void undo() {
+    if (_undo.isEmpty) return;
+    final previous = _undo.removeLast();
+    state = state.copyWith(
+      draft: previous,
+      undoDepth: _undo.length,
+      clearResult: true,
+      clearError: true,
+      clearSave: true,
+    );
+  }
+
   void clearDraft() {
+    // 空草稿没什么可清，也别往撤销栈里塞一份「清空 → 又是空」
+    if (state.draft.isEmpty) return;
+    _pushUndo(state.draft);
     state = state.copyWith(
       clearDraft: true,
+      undoDepth: _undo.length,
       clearResult: true,
       clearError: true,
       clearSave: true,

@@ -22,6 +22,105 @@ void main() {
     return c;
   }
 
+
+  // ---------------- 撤销 ----------------
+  //
+  // 画布在 onPanUpdate 里每个采样点都回调一次 setDraft，一次涂抹能产生几十份草稿。
+  // 所以撤销栈**按手势**记，不按回调记 —— 否则用户点一次撤销只退一个采样点，
+  // 看着像没反应。这几条盯的就是这个语义。
+
+  MaskDraft strokeAt(double x) => MaskDraft(
+    strokes: <MaskStroke>[
+      MaskStroke(points: <Offset>[Offset(x, 0.2), Offset(x + 0.1, 0.25)], width: 0.05),
+    ],
+  );
+
+  test('手势内改多次只算一步：撤销回到手势开始前，不是退回上一个采样点', () {
+    final c = make();
+    final ctrl = c.read(imageEditControllerProvider.notifier);
+
+    ctrl.beginGesture();
+    ctrl.setDraft(strokeAt(0.1));
+    ctrl.setDraft(strokeAt(0.2));
+    ctrl.setDraft(strokeAt(0.3));
+    ctrl.endGesture();
+
+    expect(c.read(imageEditControllerProvider).canUndo, isTrue);
+
+    ctrl.undo();
+    expect(
+      c.read(imageEditControllerProvider).draft,
+      const MaskDraft.empty(),
+      reason: '应当整笔退掉，而不是退到「只涂了一半」',
+    );
+    expect(c.read(imageEditControllerProvider).canUndo, isFalse);
+  });
+
+  test('三次手势，撤销两次 → 剩第一次的结果', () {
+    final c = make();
+    final ctrl = c.read(imageEditControllerProvider.notifier);
+
+    for (final x in <double>[0.1, 0.2, 0.3]) {
+      ctrl.beginGesture();
+      ctrl.setDraft(strokeAt(x));
+      ctrl.endGesture();
+    }
+    expect(c.read(imageEditControllerProvider).undoDepth, 3);
+
+    ctrl.undo();
+    ctrl.undo();
+    final draft = c.read(imageEditControllerProvider).draft;
+    expect(draft.strokes.length, 1);
+    expect(draft.strokes.single.points.first.dx, closeTo(0.1, 1e-9));
+  });
+
+  test('手势没改动草稿就不进栈（按一下没拖动，不该占用撤销）', () {
+    final c = make();
+    final ctrl = c.read(imageEditControllerProvider.notifier);
+
+    ctrl.beginGesture();
+    ctrl.endGesture();
+
+    expect(c.read(imageEditControllerProvider).canUndo, isFalse);
+  });
+
+  test('「清除」也能撤销：整份草稿退回来', () {
+    final c = make();
+    final ctrl = c.read(imageEditControllerProvider.notifier);
+
+    ctrl.beginGesture();
+    ctrl.setDraft(strokeAt(0.1));
+    ctrl.endGesture();
+
+    ctrl.clearDraft();
+    expect(c.read(imageEditControllerProvider).draft.isEmpty, isTrue);
+    expect(c.read(imageEditControllerProvider).canUndo, isTrue);
+
+    ctrl.undo();
+    expect(c.read(imageEditControllerProvider).draft.strokes.length, 1);
+  });
+
+  test('空草稿时「清除」不占撤销位', () {
+    final c = make();
+    final ctrl = c.read(imageEditControllerProvider.notifier);
+
+    ctrl.clearDraft();
+    expect(c.read(imageEditControllerProvider).canUndo, isFalse);
+  });
+
+  test('栈有上限：连做 40 次手势，深度不涨到 40', () {
+    final c = make();
+    final ctrl = c.read(imageEditControllerProvider.notifier);
+
+    for (var i = 0; i < 40; i++) {
+      ctrl.beginGesture();
+      ctrl.setDraft(strokeAt(0.001 * i));
+      ctrl.endGesture();
+    }
+    // _maxUndo = 30：只是别让栈无限长，不是要记住全部历史
+    expect(c.read(imageEditControllerProvider).undoDepth, lessThanOrEqualTo(30));
+  });
+
   test('示例图读不到时，状态里要有中文提示（不是静默）', () async {
     // 让 asset 通道返回 null → rootBundle.load 抛「Unable to load asset」
     final messenger =

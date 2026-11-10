@@ -110,6 +110,16 @@ class ImageEditorPage extends ConsumerWidget {
                             ? null
                             : () => controller.setTool(MaskTool.eraser),
                       ),
+                      // 撤销放在「清除」左边：用户想回去时第一个看到的是「退一步」，
+                      // 而不是「全清」—— 全清是不可撤销的粗动作，不该是最顺手的那个。
+                      MaskToolChip(
+                        icon: Icons.undo_rounded,
+                        label: '撤销',
+                        selected: false,
+                        onTap: state.busy || !state.canUndo
+                            ? null
+                            : controller.undo,
+                      ),
                       MaskToolChip(
                         icon: Icons.backspace_outlined,
                         label: '清除',
@@ -314,6 +324,8 @@ class _CanvasArea extends StatelessWidget {
       tool: state.tool,
       brushSize: state.brushSize,
       onDraftChanged: controller.setDraft,
+      onGestureStart: controller.beginGesture,
+      onGestureEnd: controller.endGesture,
     );
   }
 }

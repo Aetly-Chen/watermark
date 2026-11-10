@@ -8,6 +8,7 @@ import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:watermark_remover/core/theme/app_theme.dart';
 import 'package:watermark_remover/core/widgets/app_button.dart';
+import 'package:watermark_remover/core/widgets/mask_tool_chip.dart';
 import 'package:watermark_remover/features/image_editor/application/image_edit_controller.dart';
 import 'package:watermark_remover/features/image_editor/domain/mask_draft.dart';
 import 'package:watermark_remover/features/image_editor/presentation/image_editor_page.dart';
@@ -62,6 +63,7 @@ void main() {
     String? saveError,
     String? error,
     Duration? elapsed,
+    int undoDepth = 0,
   }) => ImageEditState(
     source: png,
     sourceName: 'cafe.jpg',
@@ -75,6 +77,7 @@ void main() {
     saveError: saveError,
     error: error,
     elapsed: elapsed,
+    undoDepth: undoDepth,
   );
 
   Future<void> pumpPage(WidgetTester tester, ImageEditState state) async {
@@ -94,6 +97,10 @@ void main() {
 
   AppButton button(WidgetTester tester, String label) =>
       tester.widget<AppButton>(find.widgetWithText(AppButton, label));
+
+  /// 工具条是 chip 不是 AppButton —— 用 `button()` 找它会 `Bad state: No element`
+  MaskToolChip chip(WidgetTester tester, String label) =>
+      tester.widget<MaskToolChip>(find.widgetWithText(MaskToolChip, label));
 
   /// 需要读回控制器状态时用这个：把 container 拿到手，页面挂在
   /// `UncontrolledProviderScope` 下。`pumpPage` 内部自建 scope，拿不到 controller。
@@ -185,6 +192,44 @@ void main() {
         );
       });
     }
+  });
+
+  testWidgets('撤销：没东西可退时禁用', (tester) async {
+    await pumpPage(
+      tester,
+      loaded(draft: const MaskDraft(rect: Rect.fromLTRB(0.1, 0.1, 0.3, 0.3))),
+    );
+    expect(find.text('撤销'), findsOneWidget);
+    expect(
+      chip(tester, '撤销').onTap,
+      isNull,
+      reason: '空栈时不能点 —— 点了没反应比禁用更糟',
+    );
+  });
+
+  // 与上一条**分开写**：同一个用例里连调两次 pumpPage，第二次的 provider 覆盖
+  // 不会重新生效（ProviderScope 被复用而不是重建），读到的还是第一次的状态。
+  testWidgets('撤销：退过一步就可点', (tester) async {
+    await pumpPage(
+      tester,
+      loaded(
+        draft: const MaskDraft(rect: Rect.fromLTRB(0.1, 0.1, 0.3, 0.3)),
+        undoDepth: 1,
+      ),
+    );
+    expect(chip(tester, '撤销').onTap, isNotNull);
+  });
+
+  testWidgets('修复中：撤销也禁用（不能改正在用的草稿）', (tester) async {
+    await pumpPage(
+      tester,
+      loaded(
+        draft: const MaskDraft(rect: Rect.fromLTRB(0.1, 0.1, 0.3, 0.3)),
+        undoDepth: 2,
+        busy: true,
+      ),
+    );
+    expect(chip(tester, '撤销').onTap, isNull);
   });
 
   testWidgets('空状态：两个入口在，「开始修复」不渲染', (tester) async {

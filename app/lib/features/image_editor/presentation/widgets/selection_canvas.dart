@@ -25,6 +25,8 @@ class SelectionCanvas extends StatefulWidget {
     required this.tool,
     required this.brushSize,
     required this.onDraftChanged,
+    this.onGestureStart,
+    this.onGestureEnd,
     super.key,
   });
 
@@ -37,6 +39,14 @@ class SelectionCanvas extends StatefulWidget {
   final double brushSize;
 
   final ValueChanged<MaskDraft> onDraftChanged;
+
+  /// 一次拖拽手势的起止。
+  ///
+  /// 撤销栈需要它：`onDraftChanged` 在 `onPanUpdate` 里每个采样点都会回调，
+  /// 一次涂抹能产生几十份草稿 —— 按回调记栈，点一次撤销只退一个采样点，像没反应。
+  /// 画布只在**手势边界**上报，控制器据此把「手势前的草稿」压栈。
+  final VoidCallback? onGestureStart;
+  final VoidCallback? onGestureEnd;
 
   @override
   State<SelectionCanvas> createState() => _SelectionCanvasState();
@@ -133,6 +143,7 @@ class _SelectionCanvasState extends State<SelectionCanvas> {
         return GestureDetector(
           behavior: HitTestBehavior.opaque,
           onPanStart: (details) {
+            widget.onGestureStart?.call();
             final p = toNormalized(details.localPosition);
             switch (widget.tool) {
               case MaskTool.rect:
@@ -211,12 +222,14 @@ class _SelectionCanvasState extends State<SelectionCanvas> {
             _resizeCorner = null;
             _resizeAnchor = null;
             _activePoints = null;
+            widget.onGestureEnd?.call();
           },
           onPanCancel: () {
             _rectStart = null;
             _resizeCorner = null;
             _resizeAnchor = null;
             _activePoints = null;
+            widget.onGestureEnd?.call();
           },
           child: Stack(
             children: [
