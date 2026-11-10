@@ -71,14 +71,20 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.2.4-arm64.apk    51 MB
-SHA-256  6b884eca464a3020e9dabefa495602c43b32d92d876adce9cb849e47c315700e
+watermark-remover-v0.2.5-arm64.apk    51 MB
+SHA-256  d98021b2755fb4c54494f982670cb4d982f9f351e1ead9644f01c7c1d30f3c88
 ```
 
 > 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.2.5 变更**
+
+- **新增「撤销」**（技术方案 §1.1 要求、代码一直缺）：按**手势**记栈，
+  一次涂抹 = 一步（按采样点记的话点一次只退一个点，看着像没反应）。
+  「清除」也可撤销；没东西可退时按钮置灰。
 
 **v0.2.4 变更**
 
