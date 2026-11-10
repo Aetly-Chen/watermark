@@ -49,6 +49,36 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 视口扫描：有记录时，列表项 + 筛选行在窄屏 / 横屏装不装得下。
+  group('视口不溢出', () {
+    const sizes = <Size>[
+      Size(320, 568),
+      Size(360, 640),
+      Size(412, 915),
+      Size(780, 360),
+    ];
+
+    for (final size in sizes) {
+      testWidgets('${size.width.toInt()}×${size.height.toInt()}', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await pumpHistory(
+          tester,
+          initial: <HistoryItem>[item('a'), item('b'), item('c')],
+          store: MemoryHistoryStore(),
+        );
+
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${size.width.toInt()}×${size.height.toInt()} 下布局溢出了',
+        );
+      });
+    }
+  });
+
   testWidgets('没有记录：空态说清楚去哪里产生记录', (tester) async {
     await pumpHistory(
       tester,

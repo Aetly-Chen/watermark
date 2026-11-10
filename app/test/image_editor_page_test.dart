@@ -153,6 +153,40 @@ void main() {
     }
   });
 
+  /// 同一组视口，再扫一遍**结果态** —— 那一屏元素更多（对比视图 + 两个按钮 + 提示）。
+  group('视口不溢出（结果态）', () {
+    const sizes = <Size>[
+      Size(320, 568),
+      Size(360, 640),
+      Size(412, 915),
+      Size(780, 360),
+    ];
+
+    for (final size in sizes) {
+      testWidgets('${size.width.toInt()}×${size.height.toInt()}', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await pumpPage(
+          tester,
+          loaded(
+            draft: const MaskDraft(rect: Rect.fromLTRB(0.1, 0.1, 0.3, 0.3)),
+            result: resultPath,
+            elapsed: const Duration(milliseconds: 1200),
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${size.width.toInt()}×${size.height.toInt()} 结果态布局溢出了',
+        );
+      });
+    }
+  });
+
   testWidgets('空状态：两个入口在，「开始修复」不渲染', (tester) async {
     await pumpPage(tester, const ImageEditState());
 

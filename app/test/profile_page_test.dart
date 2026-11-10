@@ -51,6 +51,36 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 视口扫描：「我的」页有统计数字与缓存行，窄屏最容易挤。
+  group('视口不溢出', () {
+    const sizes = <Size>[
+      Size(320, 568),
+      Size(360, 640),
+      Size(412, 915),
+      Size(780, 360),
+    ];
+
+    for (final size in sizes) {
+      testWidgets('${size.width.toInt()}×${size.height.toInt()}', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await pumpProfile(
+          tester,
+          cache: MemoryCacheStore(),
+          history: <HistoryItem>[done('a'), done('b')],
+        );
+
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${size.width.toInt()}×${size.height.toInt()} 下布局溢出了',
+        );
+      });
+    }
+  });
+
   testWidgets('概览数字来自真实历史，没有记录时不编数字', (tester) async {
     await pumpProfile(tester, cache: MemoryCacheStore());
 

@@ -352,6 +352,59 @@ void main() {
     }
   });
 
+  /// 结果态视口扫描：这一屏是全 App 元素最多的一屏
+  /// （对比视图 + 结果卡 + 预览/保存 + 重新修复 + 选区提示 + 跟随开关 + 主按钮）。
+  /// 现有用例只覆盖了 360×800 与 1080×2400。
+  group('视口不溢出（结果态）', () {
+    const sizes = <Size>[
+      Size(320, 568),
+      Size(360, 640),
+      Size(780, 360),
+    ];
+
+    for (final size in sizes) {
+      testWidgets('${size.width.toInt()}×${size.height.toInt()}', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await pumpPage(
+          tester,
+          VideoEditState(
+            videoPath: meta.path,
+            meta: meta,
+            poster: posterBytes,
+            posterSize: const Size(960, 540),
+            selection: const Rect.fromLTRB(0.4, 0.35, 0.58, 0.52),
+            result: const VideoRepairResult(
+              outputPath: '/tmp/fixed.mp4',
+              width: 960,
+              height: 540,
+              rotation: 0,
+              frames: 150,
+              skippedFrames: 3,
+              videoBytes: 1397148,
+              audioBytes: 161792,
+              hasAudio: true,
+              maskPixels: 15824,
+              sizeBytes: 1562172,
+              elapsed: Duration(milliseconds: 56074),
+            ),
+            resultFrame: posterBytes,
+            resultFrameSize: const Size(960, 540),
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${size.width.toInt()}×${size.height.toInt()} 结果态布局溢出了',
+        );
+      });
+    }
+  });
+
   testWidgets('手机竖屏 360×800：出结果后不溢出，保存与重新修复都够得着', (tester) async {
     // 默认测试视口是 800×600（宽而矮），手机是 360×800（窄而高）。
     // 结果态底部同时挂着元信息 Wrap + 结果卡 + 保存按钮 + 选区提示 + 跟随开关 + 主按钮，

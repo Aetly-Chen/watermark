@@ -46,6 +46,34 @@ void main() {
     await tester.pumpAndSettle();
   }
 
+  /// 视口扫描：首页有记录时，卡片和「最近处理」列表在窄屏 / 横屏装不装得下。
+  ///
+  /// 图片页的同款扫描抓出过真 bug（320dp 上溢出 29px），首页从没做过。
+  group('视口不溢出', () {
+    const sizes = <Size>[
+      Size(320, 568),
+      Size(360, 640),
+      Size(412, 915),
+      Size(780, 360),
+    ];
+
+    for (final size in sizes) {
+      testWidgets('${size.width.toInt()}×${size.height.toInt()}', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await pumpHome(tester, initial: <HistoryItem>[item('a'), item('b'), item('c')]);
+
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${size.width.toInt()}×${size.height.toInt()} 下布局溢出了',
+        );
+      });
+    }
+  });
+
   testWidgets('没有记录：最近处理要说「还没有」，不能只剩一个标题', (tester) async {
     await pumpHome(tester);
 
