@@ -118,6 +118,41 @@ void main() {
     return container;
   }
 
+  /// 视口扫描：小屏 / 常见屏 / 横屏，有没有溢出。
+  ///
+  /// 这类问题**单测和文案断言都抓不到** —— 只有真的按某个尺寸排一遍版才会暴露，
+  /// 在真机上表现为底部一条黄黑条纹 + 按钮被顶出屏幕。图片页从来没做过这件事，
+  /// 而它是主链路之一。
+  group('视口不溢出', () {
+    // 320×568 是老机器下限；780×360 是横屏（最险，可用高度只有 360）
+    const sizes = <Size>[
+      Size(320, 568),
+      Size(360, 640),
+      Size(412, 915),
+      Size(780, 360),
+    ];
+
+    for (final size in sizes) {
+      testWidgets('${size.width.toInt()}×${size.height.toInt()}', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await pumpPage(
+          tester,
+          loaded(draft: const MaskDraft(rect: Rect.fromLTRB(0.1, 0.1, 0.3, 0.3))),
+        );
+        await tester.pump();
+
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${size.width.toInt()}×${size.height.toInt()} 下布局溢出了',
+        );
+      });
+    }
+  });
+
   testWidgets('空状态：两个入口在，「开始修复」不渲染', (tester) async {
     await pumpPage(tester, const ImageEditState());
 

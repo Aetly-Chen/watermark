@@ -56,7 +56,13 @@ class ImageEditorPage extends ConsumerWidget {
               crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
                 if (state.hasImage) ...[
-                  Row(
+                  // 用 Wrap 而不是 Row + Spacer：320dp 的小屏上这条会横向溢出
+                  // （实测溢出 29px，真机上是黄黑条纹）。Spacer 要求两边都放得下，
+                  // 窄屏放不下就只能报溢出 —— 折行比裁掉字好。
+                  Wrap(
+                    spacing: 18,
+                    runSpacing: 6,
+                    crossAxisAlignment: WrapCrossAlignment.center,
                     children: [
                       _Meta(
                         label: '原图',
@@ -64,9 +70,7 @@ class ImageEditorPage extends ConsumerWidget {
                             ? '—'
                             : '${state.imageSize!.width.toInt()} × ${state.imageSize!.height.toInt()}',
                       ),
-                      const SizedBox(width: 18),
                       _Meta(label: '遮罩', value: maskLabel(state)),
-                      const Spacer(),
                       if (state.elapsed != null)
                         Text(
                           '耗时 ${state.elapsed!.inMilliseconds} ms',
@@ -77,7 +81,10 @@ class ImageEditorPage extends ConsumerWidget {
                   const SizedBox(height: 10),
                   // 三个工具都是**真的能切**。之前只有一个「矩形选区」，
                   // 而且它是个假按钮（onTap 给的空函数）—— 原型上明明是四个工具。
-                  Row(
+                  // 同理：4 个 chip 在 320dp 上放不下（溢出 26px），折行
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       MaskToolChip(
                         icon: Icons.crop_free_rounded,
@@ -87,7 +94,6 @@ class ImageEditorPage extends ConsumerWidget {
                             ? null
                             : () => controller.setTool(MaskTool.rect),
                       ),
-                      const SizedBox(width: 8),
                       MaskToolChip(
                         icon: Icons.brush_outlined,
                         label: '涂抹',
@@ -96,7 +102,6 @@ class ImageEditorPage extends ConsumerWidget {
                             ? null
                             : () => controller.setTool(MaskTool.brush),
                       ),
-                      const SizedBox(width: 8),
                       MaskToolChip(
                         icon: Icons.auto_fix_normal_outlined,
                         label: '橡皮',
@@ -105,7 +110,6 @@ class ImageEditorPage extends ConsumerWidget {
                             ? null
                             : () => controller.setTool(MaskTool.eraser),
                       ),
-                      const SizedBox(width: 8),
                       MaskToolChip(
                         icon: Icons.backspace_outlined,
                         label: '清除',

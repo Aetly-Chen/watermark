@@ -152,7 +152,10 @@ class VideoEditorPage extends ConsumerWidget {
                   const SizedBox(height: 8),
                 ],
                 if (state.hasVideo) ...[
-                  Row(
+                  // 与图片页同一套：窄屏折行，别让 4 个 chip 顶出屏幕
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 8,
                     children: [
                       MaskToolChip(
                         icon: Icons.crop_free_rounded,
@@ -162,7 +165,6 @@ class VideoEditorPage extends ConsumerWidget {
                             ? null
                             : () => controller.setTool(MaskTool.rect),
                       ),
-                      const SizedBox(width: 8),
                       MaskToolChip(
                         icon: Icons.brush_outlined,
                         label: '涂抹',
@@ -171,7 +173,6 @@ class VideoEditorPage extends ConsumerWidget {
                             ? null
                             : () => controller.setTool(MaskTool.brush),
                       ),
-                      const SizedBox(width: 8),
                       MaskToolChip(
                         icon: Icons.auto_fix_normal_outlined,
                         label: '橡皮',
@@ -180,7 +181,6 @@ class VideoEditorPage extends ConsumerWidget {
                             ? null
                             : () => controller.setTool(MaskTool.eraser),
                       ),
-                      const SizedBox(width: 8),
                       MaskToolChip(
                         icon: Icons.backspace_outlined,
                         label: '清除',

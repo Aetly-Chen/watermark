@@ -6,6 +6,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watermark_remover/core/media/video_probe.dart';
 import 'package:watermark_remover/core/media/video_repairer.dart';
 import 'package:watermark_remover/core/theme/app_theme.dart';
+import 'package:watermark_remover/features/image_editor/domain/mask_draft.dart';
 import 'package:watermark_remover/features/video_editor/application/video_edit_controller.dart';
 import 'package:watermark_remover/features/video_editor/presentation/video_editor_page.dart';
 
@@ -309,6 +310,46 @@ void main() {
     expect(find.byKey(const ValueKey('compare-split')), findsNothing);
     expect(find.text('封面帧 · 框选水印位置'), findsOneWidget);
     expect(find.text('修复完成'), findsOneWidget);
+  });
+
+  /// 视口扫描：选了视频、工具条那一屏。
+  ///
+  /// 图片页同一条用例抓出过真 bug（320dp 上工具条溢出 26px、元信息行溢出 29px，
+  /// 真机表现是底部黄黑条纹）。视频页是**同一排 4 个 chip**，之前只测过 360×800 和
+  /// 1080×2400，没有更窄的屏、也没测过横屏。
+  group('视口不溢出', () {
+    const sizes = <Size>[
+      Size(320, 568),
+      Size(360, 800),
+      Size(780, 360),
+    ];
+
+    for (final size in sizes) {
+      testWidgets('${size.width.toInt()}×${size.height.toInt()}', (tester) async {
+        tester.view.physicalSize = size;
+        tester.view.devicePixelRatio = 1.0;
+        addTearDown(tester.view.reset);
+
+        await pumpPage(
+          tester,
+          VideoEditState(
+            videoPath: meta.path,
+            meta: meta,
+            poster: posterBytes,
+            posterSize: const Size(960, 540),
+            selection: const Rect.fromLTRB(0.4, 0.35, 0.58, 0.52),
+            tool: MaskTool.brush,
+          ),
+        );
+        await tester.pump();
+
+        expect(
+          tester.takeException(),
+          isNull,
+          reason: '${size.width.toInt()}×${size.height.toInt()} 下布局溢出了',
+        );
+      });
+    }
   });
 
   testWidgets('手机竖屏 360×800：出结果后不溢出，保存与重新修复都够得着', (tester) async {
