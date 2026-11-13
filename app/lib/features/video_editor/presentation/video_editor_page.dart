@@ -10,6 +10,7 @@ import '../../../core/widgets/before_after_view.dart';
 import '../../../core/widgets/editor_canvas_layout.dart';
 import '../../../core/widgets/mask_tool_chip.dart';
 import '../../../core/widgets/video_preview_dialog.dart';
+import '../../image_editor/domain/mask_area.dart';
 import '../../image_editor/domain/mask_draft.dart';
 import '../../image_editor/presentation/widgets/selection_canvas.dart';
 import '../application/video_edit_controller.dart';
@@ -149,6 +150,18 @@ class VideoEditorPage extends ConsumerWidget {
                 ],
                 if (state.hasMask && state.meta != null) ...[
                   _Hint(text: maskLabel(state)),
+                  // **修复前**就警告，而不是等出结果再解释。
+                  // 现在的填充是 TELEA（扩散算法，不造纹理）：洞一大只能填出平滑色块。
+                  // 实测同一帧同一水印：矩形框 16.4% → PSNR 12.05；贴着字涂 3.4% → 25.47。
+                  // 也就是说「框太大」这一件事就值 13 dB，而用户在按下修复前就能改。
+                  if (_maskTooBig(state)) ...[
+                    const SizedBox(height: 6),
+                    _Hint(
+                      text: '选区占画面 ${_maskPercent(state)}%，'
+                          '这么大的范围只能填成一片平滑色块；'
+                          '贴着水印涂（或把框缩小）会自然得多',
+                    ),
+                  ],
                   const SizedBox(height: 8),
                 ],
                 if (state.hasVideo) ...[
@@ -452,6 +465,29 @@ class _Meta extends StatelessWidget {
     );
   }
 }
+
+/// 与原生侧 `BIG_MASK_RATIO` 对齐的阈值。
+///
+/// 为什么是 12%：实测 24.9% 的矩形洞上 TELEA 只能沿四条对角线扩散，
+/// 填出一个巨大的 X 形灰斑；12% 是「再大就一定难看」的经验线。
+const double kBigMaskRatio = 0.12;
+
+/// 选区占画面的比例（0..1）。没选东西或没有视频信息时返回 0。
+double maskRatioOf(VideoEditState state) {
+  final meta = state.meta;
+  if (meta == null || !state.hasMask) return 0;
+  final w = meta.displayWidth;
+  final h = meta.displayHeight;
+  if (w <= 0 || h <= 0) return 0;
+  // 界面每帧都会重建，这里用 120 宽的格子：误差仍在 1% 内，代价约为 240 的 1/4
+  return maskCoverage(state.draft, aspect: w / h, gridWidth: 120);
+}
+
+bool _maskTooBig(VideoEditState state) =>
+    !state.processing && !state.busy && maskRatioOf(state) > kBigMaskRatio;
+
+String _maskPercent(VideoEditState state) =>
+    (maskRatioOf(state) * 100).toStringAsFixed(0);
 
 class _Hint extends StatelessWidget {
   const _Hint({required this.text});

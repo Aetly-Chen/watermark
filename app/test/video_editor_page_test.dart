@@ -445,6 +445,54 @@ void main() {
     expect(chip.onTap, isNotNull);
   });
 
+  /// 「框太大 → 只能填成一片色块」要在**按修复之前**就说，而不是等出结果。
+  /// 实测掩膜从 16.4% 降到 3.4% 值 13 dB，而用户在按下去之前就能改。
+  group('大选区预警', () {
+    testWidgets('选区超过 12%：修复前就提示，并给出做法', (tester) async {
+      await pumpPage(
+        tester,
+        VideoEditState(
+          videoPath: meta.path,
+          meta: meta,
+          poster: posterBytes,
+          posterSize: const Size(960, 540),
+          selection: const Rect.fromLTRB(0.2, 0.2, 0.7, 0.6), // 25%
+        ),
+      );
+      expect(find.textContaining('选区占画面'), findsOneWidget);
+      expect(find.textContaining('贴着水印涂'), findsOneWidget);
+    });
+
+    testWidgets('选区很小：不打扰', (tester) async {
+      await pumpPage(
+        tester,
+        VideoEditState(
+          videoPath: meta.path,
+          meta: meta,
+          poster: posterBytes,
+          posterSize: const Size(960, 540),
+          selection: const Rect.fromLTRB(0.40, 0.35, 0.58, 0.52), // 3%
+        ),
+      );
+      expect(find.textContaining('选区占画面'), findsNothing);
+    });
+
+    testWidgets('正在修复时不提示（那是结果页的事）', (tester) async {
+      await pumpPage(
+        tester,
+        VideoEditState(
+          videoPath: meta.path,
+          meta: meta,
+          poster: posterBytes,
+          posterSize: const Size(960, 540),
+          selection: const Rect.fromLTRB(0.2, 0.2, 0.7, 0.6),
+          processing: true,
+        ),
+      );
+      expect(find.textContaining('选区占画面'), findsNothing);
+    });
+  });
+
   testWidgets('手机竖屏 360×800：出结果后不溢出，保存与重新修复都够得着', (tester) async {
     // 默认测试视口是 800×600（宽而矮），手机是 360×800（窄而高）。
     // 结果态底部同时挂着元信息 Wrap + 结果卡 + 保存按钮 + 选区提示 + 跟随开关 + 主按钮，

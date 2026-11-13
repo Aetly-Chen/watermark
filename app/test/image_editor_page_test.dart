@@ -232,6 +232,26 @@ void main() {
     expect(chip(tester, '撤销').onTap, isNull);
   });
 
+  /// 与视频页同一条规则：TELEA 是扩散算法，洞一大只能填成平滑色块。
+  group('大选区预警', () {
+    testWidgets('选区超过 12%：修复前就提示', (tester) async {
+      await pumpPage(
+        tester,
+        loaded(draft: const MaskDraft(rect: Rect.fromLTRB(0.2, 0.2, 0.7, 0.6))), // 25%
+      );
+      expect(find.textContaining('选区占画面'), findsOneWidget);
+      expect(find.textContaining('贴着水印涂'), findsOneWidget);
+    });
+
+    testWidgets('小选区不打扰（既有用例用的就是这个尺寸）', (tester) async {
+      await pumpPage(
+        tester,
+        loaded(draft: const MaskDraft(rect: Rect.fromLTRB(0.1, 0.1, 0.3, 0.3))), // 4%
+      );
+      expect(find.textContaining('选区占画面'), findsNothing);
+    });
+  });
+
   testWidgets('空状态：两个入口在，「开始修复」不渲染', (tester) async {
     await pumpPage(tester, const ImageEditState());
 

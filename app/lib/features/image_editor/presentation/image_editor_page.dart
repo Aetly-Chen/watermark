@@ -10,6 +10,7 @@ import '../../../core/widgets/before_after_view.dart';
 import '../../../core/widgets/editor_canvas_layout.dart';
 import '../../../core/widgets/mask_tool_chip.dart';
 import '../application/image_edit_controller.dart';
+import '../domain/mask_area.dart';
 import '../domain/mask_draft.dart';
 import 'widgets/selection_canvas.dart';
 
@@ -78,6 +79,15 @@ class ImageEditorPage extends ConsumerWidget {
                         ),
                     ],
                   ),
+                  if (_maskTooBig(state)) ...[
+                    const SizedBox(height: 8),
+                    _ErrorBanner(
+                      message: '选区占画面 ${_maskPercent(state)}%，'
+                          '这么大的范围只能填成一片平滑色块；'
+                          '贴着水印涂（或把框缩小）会自然得多',
+                      hint: true,
+                    ),
+                  ],
                   const SizedBox(height: 10),
                   // 三个工具都是**真的能切**。之前只有一个「矩形选区」，
                   // 而且它是个假按钮（onTap 给的空函数）—— 原型上明明是四个工具。
@@ -330,6 +340,20 @@ class _CanvasArea extends StatelessWidget {
   }
 }
 
+double _ratioOf(ImageEditState state) {
+  final size = state.imageSize;
+  if (size == null || state.source == null || !state.draft.hasMask) return 0;
+  if (size.width <= 0 || size.height <= 0) return 0;
+  return maskCoverage(state.draft, aspect: size.width / size.height, gridWidth: 120);
+}
+
+/// 与视频页 `kBigMaskRatio` 同一阈值：TELEA 是扩散算法，洞一大只能填出平滑色块。
+bool _maskTooBig(ImageEditState state) =>
+    !state.busy && !state.saving && _ratioOf(state) > 0.12;
+
+String _maskPercent(ImageEditState state) =>
+    (_ratioOf(state) * 100).toStringAsFixed(0);
+
 class _Meta extends StatelessWidget {
   const _Meta({required this.label, required this.value});
 
@@ -358,26 +382,37 @@ class _Meta extends StatelessWidget {
 
 
 class _ErrorBanner extends StatelessWidget {
-  const _ErrorBanner({required this.message});
+  const _ErrorBanner({required this.message, this.hint = false});
 
   final String message;
+
+  /// true = 提示而不是报错。同一块板子，换掉图标与配色 ——
+  /// 「选区偏大」不是失败，用红色感叹号会让人以为出了问题。
+  final bool hint;
 
   @override
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-      color: t.flameSoft,
-      borderColor: t.flameSoft,
+      color: hint ? t.paper : t.flameSoft,
+      borderColor: hint ? t.line : t.flameSoft,
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Icon(Icons.error_outline_rounded, size: 16, color: t.danger),
+          Icon(
+            hint ? Icons.info_outline_rounded : Icons.error_outline_rounded,
+            size: 16,
+            color: hint ? t.ink3 : t.danger,
+          ),
           const SizedBox(width: 8),
           Expanded(
             child: Text(
               message,
-              style: TextStyle(fontSize: 12.5, color: t.flameTxt),
+              style: TextStyle(
+                fontSize: 12.5,
+                color: hint ? t.ink2 : t.flameTxt,
+              ),
             ),
           ),
         ],
