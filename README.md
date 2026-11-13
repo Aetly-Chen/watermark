@@ -71,14 +71,20 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.2.6-arm64.apk    51 MB
-SHA-256  ce1dd1b8f52dc8e4de45a605544d88c3965d7cdb82b4d9141d764be976e2ce8f
+watermark-remover-v0.2.7-arm64.apk    51 MB
+SHA-256  80f3177c6710bc95c06635235c4f9c37fcd22f31cc0988432231b83efb6f3b54
 ```
 
 > 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.2.7 变更**
+
+- **修复前就警告「选区太大」**：TELEA 是扩散算法、不造纹理，洞一大只能填成平滑色块。
+  实测同一帧同一水印：矩形框 16.4% → PSNR 12.05，贴着字涂 3.4% → 25.47（**差 13.4 dB**）。
+  超过 12% 时图片页/视频页都在修复前提示，并给出做法。
 
 **v0.2.6 变更**
 
