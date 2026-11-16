@@ -1,0 +1,27 @@
+<?xml version="1.0" encoding="utf-8"?>
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="1024"
+    android:viewportHeight="1024">
+
+    <!-- B · 修复笔：奶油纸面 + 焦橙修复笔，去掉左上角加号装饰。 -->
+    <path
+        android:fillColor="#FFFDF8"
+        android:pathData="M224,0 L800,0 C923.7,0 1024,100.3 1024,224 L1024,800 C1024,923.7 923.7,1024 800,1024 L224,1024 C100.3,1024 0,923.7 0,800 L0,224 C0,100.3 100.3,0 224,0 Z" />
+    <path
+        android:fillColor="#C4551B"
+        android:pathData="M226,692 C352,674 440,616 490,519 C535,431 565,364 650,320 C700,294 757,302 789,334 C826,372 820,427 783,468 C738,517 662,525 606,561 C520,616 474,706 357,731 C306,742 264,736 226,727 Z" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#1B1A17"
+        android:strokeWidth="38"
+        android:strokeLineCap="round"
+        android:pathData="M622,326 C677,279 734,262 776,303 C816,342 800,398 757,432 C714,466 676,470 636,453" />
+    <path
+        android:fillColor="@android:color/transparent"
+        android:strokeColor="#FFFDF8"
+        android:strokeWidth="28"
+        android:strokeLineCap="round"
+        android:pathData="M355,690 C385,636 429,599 487,579" />
+</vector>
