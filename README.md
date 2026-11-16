@@ -71,14 +71,20 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.2.7-arm64.apk    51 MB
-SHA-256  80f3177c6710bc95c06635235c4f9c37fcd22f31cc0988432231b83efb6f3b54
+watermark-remover-v0.2.8-arm64.apk    51 MB
+SHA-256  32608c3b1be9e3183537d507aee026be8acd83d33e70e1940e160d3a5ebad80c
 ```
 
 > 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.2.8 变更**
+
+- **应用图标换成「修复笔」**，并改为标准自适应图标（背景渐变 / 前景笔迹 / 单色三层）：
+  之前直接把整块 1024 画布当图标，系统会按老图标处理（垫白底 + 缩小），
+  笔偏小、四周一圈白。同时按 SVG 重渲了 mdpi~xxxhdpi 五张位图（API 24~25 用）。
 
 **v0.2.7 变更**
 

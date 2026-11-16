@@ -1,0 +1,32 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标（Android 8.0 / API 26+）的背景层。
+
+  为什么单独一个文件而不是直接给颜色：设计稿的背景是 FFFDF8 → F4EFE5 的极浅渐变，
+  纯色会丢掉那一层层次。vector 支持渐变填充（靠 aapt:attr 注入 <gradient>），
+  而 `android:color` 不支持。
+
+  尺寸必须 108dp、内容铺满：自适应图标会按启动器自己的形状（圆 / 方 / 圆角方）裁剪，
+  背景要盖住整块画布，四角被裁掉是正常的 —— 这不是 bug。
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="108dp"
+    android:height="108dp"
+    android:viewportWidth="108"
+    android:viewportHeight="108">
+
+    <path android:pathData="M0,0h108v108h-108z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:startX="0"
+                android:startY="0"
+                android:endX="108"
+                android:endY="108"
+                android:type="linear">
+                <item android:offset="0" android:color="#FFFFFDF8" />
+                <item android:offset="1" android:color="#FFF4EFE5" />
+            </gradient>
+        </aapt:attr>
+    </path>
+</vector>

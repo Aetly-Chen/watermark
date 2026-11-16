@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  自适应图标（API 26+）。Android 会把下面三层合起来，再按启动器自己的形状裁剪：
+  背景铺满、前景居中、monochrome 给 Android 13 的「主题图标」用（系统取单色剪影上色）。
+
+  注意：`mipmap-anydpi-v26` 这个目录名是约定 —— 只有 v26 及以上走这里，
+  API 24~25 仍然用 mipmap-*/ic_launcher.png（那几张是由 SVG 渲染出来的位图）。
+-->
+<adaptive-icon xmlns:android="http://schemas.android.com/apk/res/android">
+    <background android:drawable="@drawable/ic_launcher_background" />
+    <foreground android:drawable="@drawable/ic_launcher_foreground" />
+    <monochrome android:drawable="@drawable/ic_launcher_monochrome" />
+</adaptive-icon>
