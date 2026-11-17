@@ -5,19 +5,23 @@ import 'dart:ui' as ui;
 import '../../../core/processing/processing_error.dart';
 import '../domain/mask_draft.dart';
 
-/// 送进 native 前的两个文件。
+/// 送进 native 前的输入与遮罩文件。
 class PreparedInput {
   const PreparedInput({
     required this.inputPath,
     required this.maskPath,
     required this.width,
     required this.height,
+    this.exifSourcePath,
+    this.isJpeg = false,
   });
 
   final String inputPath;
   final String maskPath;
   final int width;
   final int height;
+  final String? exifSourcePath;
+  final bool isJpeg;
 }
 
 /// 把「用户看到的图 + 框选/涂抹」翻译成 native 能直接吃的一对文件。
@@ -33,6 +37,13 @@ class PreparedInput {
 class MaskComposer {
   const MaskComposer._();
 
+  /// 判定原始字节是否为 JPEG（SOI + APPn/DQT 等起始标识 `FF D8 FF`）。
+  static bool isJpegBytes(Uint8List bytes) =>
+      bytes.length >= 3 &&
+      bytes[0] == 0xFF &&
+      bytes[1] == 0xD8 &&
+      bytes[2] == 0xFF;
+
   static Future<PreparedInput> prepare({
     required Uint8List sourceBytes,
     required MaskDraft draft,
@@ -44,6 +55,14 @@ class MaskComposer {
         ProcessingErrorCode.invalidMask,
         detail: '还没有框选或涂抹要修的地方',
       );
+    }
+
+    final isJpeg = isJpegBytes(sourceBytes);
+    String? exifSourcePath;
+    if (isJpeg) {
+      final rawFile = File('${workDir.path}/raw_$taskId.jpg');
+      await rawFile.writeAsBytes(sourceBytes, flush: true);
+      exifSourcePath = rawFile.path;
     }
 
     final codec = await ui.instantiateImageCodec(sourceBytes);
@@ -72,6 +91,8 @@ class MaskComposer {
         maskPath: maskFile.path,
         width: width,
         height: height,
+        exifSourcePath: exifSourcePath,
+        isJpeg: isJpeg,
       );
     } finally {
       image.dispose();

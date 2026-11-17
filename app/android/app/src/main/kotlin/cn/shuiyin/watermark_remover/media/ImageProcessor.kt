@@ -2,6 +2,7 @@ package cn.shuiyin.watermark_remover.media
 
 import android.graphics.Bitmap
 import android.graphics.BitmapFactory
+import android.media.ExifInterface
 import android.os.SystemClock
 import android.util.Log
 import org.opencv.android.OpenCVLoader
@@ -13,6 +14,7 @@ import org.opencv.core.MatOfDouble
 import org.opencv.core.MatOfPoint
 import org.opencv.core.Point
 import org.opencv.core.Rect
+import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgproc.Imgproc
 import org.opencv.photo.Photo
@@ -25,7 +27,7 @@ import java.io.FileOutputStream
  * 契约（与 Dart 侧对齐，改这里必须同步改 MaskComposer）：
  * - inputPath / maskPath 都是 Flutter 已经「压平方向」的 PNG，尺寸必须一致；
  * - mask 白 = 需要修复；
- * - 输出 PNG，尺寸与输入一致。
+ * - 输出 PNG 或 JPEG，尺寸与输入一致。
  *
  * 两个 OpenCV 的坑（都在真机上踩过）：
  * 1. 4.14 的 `inpaint` 在 `org.opencv.photo.Photo`，不在 `Imgproc` —— 老教程写的 `Imgproc.inpaint` 编不过；
@@ -41,12 +43,58 @@ object ImageProcessor {
      */
     private const val MIN_REFINED_RATIO = 0.005
 
-    /** 图片路径的掩膜外扩：污染半径实测 10~14px，随质量档在 [8, 16] 之间取。 */
-    private const val MIN_GROW_PX = 8
-    private const val MAX_GROW_PX = 16
+    /** 图片路径的自适应外扩范围（像素），避免细水印被过度膨胀成大洞。 */
+    private const val MIN_GROW_PX = 2
+    private const val MAX_GROW_PX = 6
 
     /** 边界羽化宽度（像素）。实测接缝梯度 3.33x → 1.66x。 */
     private const val FEATHER_PX = 3
+
+    /** 输出 JPEG 的压缩质量。 */
+    private const val JPEG_QUALITY = 98
+
+    private val EXIF_COPY_TAGS = arrayOf(
+        ExifInterface.TAG_DATETIME,
+        ExifInterface.TAG_DATETIME_ORIGINAL,
+        ExifInterface.TAG_DATETIME_DIGITIZED,
+        ExifInterface.TAG_SUBSEC_TIME,
+        ExifInterface.TAG_SUBSEC_TIME_ORIGINAL,
+        ExifInterface.TAG_SUBSEC_TIME_DIGITIZED,
+        "OffsetTime",
+        "OffsetTimeOriginal",
+        "OffsetTimeDigitized",
+        ExifInterface.TAG_MAKE,
+        ExifInterface.TAG_MODEL,
+        "LensMake",
+        "LensModel",
+        ExifInterface.TAG_F_NUMBER,
+        ExifInterface.TAG_EXPOSURE_TIME,
+        ExifInterface.TAG_ISO_SPEED_RATINGS,
+        ExifInterface.TAG_FOCAL_LENGTH,
+        ExifInterface.TAG_FOCAL_LENGTH_IN_35MM_FILM,
+        ExifInterface.TAG_FLASH,
+        ExifInterface.TAG_WHITE_BALANCE,
+        ExifInterface.TAG_APERTURE_VALUE,
+        ExifInterface.TAG_SHUTTER_SPEED_VALUE,
+        ExifInterface.TAG_EXPOSURE_BIAS_VALUE,
+        ExifInterface.TAG_METERING_MODE,
+        ExifInterface.TAG_LIGHT_SOURCE,
+        ExifInterface.TAG_SCENE_CAPTURE_TYPE,
+        ExifInterface.TAG_GPS_LATITUDE,
+        ExifInterface.TAG_GPS_LATITUDE_REF,
+        ExifInterface.TAG_GPS_LONGITUDE,
+        ExifInterface.TAG_GPS_LONGITUDE_REF,
+        ExifInterface.TAG_GPS_ALTITUDE,
+        ExifInterface.TAG_GPS_ALTITUDE_REF,
+        ExifInterface.TAG_GPS_TIMESTAMP,
+        ExifInterface.TAG_GPS_DATESTAMP,
+        ExifInterface.TAG_COLOR_SPACE,
+        ExifInterface.TAG_IMAGE_DESCRIPTION,
+        ExifInterface.TAG_ARTIST,
+        ExifInterface.TAG_COPYRIGHT,
+        ExifInterface.TAG_SOFTWARE,
+        ExifInterface.TAG_USER_COMMENT,
+    )
 
     class InvalidMaskException(message: String) : IllegalArgumentException(message)
 
@@ -55,7 +103,8 @@ object ImageProcessor {
         maskPath: String,
         outputPath: String,
         radius: Int,
-        refine: Boolean = true,
+        refine: Boolean = false,
+        exifSourcePath: String? = null,
     ): Map<String, Any> {
         val started = SystemClock.elapsedRealtime()
 
@@ -121,9 +170,7 @@ object ImageProcessor {
 
             // 4 通道 → 3 通道，inpaint 的唯一合法输入
             Imgproc.cvtColor(srcRgba, srcBgr, Imgproc.COLOR_RGBA2BGR)
-            // 先外扩再修：掩膜边界压在水印抗锯齿/JPEG 块上时，TELEA 会把笔画色抹进洞里
-            // （实测余量 2px 时字区 std 15.57，外扩到 12~14px 才降到 1.43）
-            val grow = (radius * 2).coerceIn(MIN_GROW_PX, MAX_GROW_PX)
+            val grow = (radius / 2).coerceIn(MIN_GROW_PX, MAX_GROW_PX)
             val repaired = inpaintBgr(
                 srcBgr,
                 finalMask,
@@ -131,25 +178,45 @@ object ImageProcessor {
                 growPx = grow,
                 featherPx = FEATHER_PX,
             )
-            // 回 4 通道，matToBitmap 要 RGBA
-            Imgproc.cvtColor(repaired, dstRgba, Imgproc.COLOR_BGR2RGBA)
-            repaired.release()
+            try {
+                // 框外像素及原始 Alpha 通道 100% 保留，只写回实际修改过的 ROI
+                srcRgba.copyTo(dstRgba)
+                val changedRoi = computeInpaintRoi(
+                    finalMask,
+                    srcBgr.cols(),
+                    srcBgr.rows(),
+                    radius,
+                    growPx = grow,
+                    featherPx = FEATHER_PX,
+                )
+                if (changedRoi != null) {
+                    writeRepairedRoiRgba(srcRgba, repaired, dstRgba, changedRoi)
+                }
+            } finally {
+                repaired.release()
+            }
 
             val outBitmap = Bitmap.createBitmap(dstRgba.cols(), dstRgba.rows(), Bitmap.Config.ARGB_8888)
             try {
                 Utils.matToBitmap(dstRgba, outBitmap)
                 val file = File(outputPath)
                 file.parentFile?.mkdirs()
+                val isJpegOut = isJpegPath(outputPath)
+                val format = if (isJpegOut) Bitmap.CompressFormat.JPEG else Bitmap.CompressFormat.PNG
+                val quality = if (isJpegOut) JPEG_QUALITY else 100
                 FileOutputStream(file).use { out ->
-                    if (!outBitmap.compress(Bitmap.CompressFormat.PNG, 100, out)) {
+                    if (!outBitmap.compress(format, quality, out)) {
                         throw IllegalStateException("写文件失败：$outputPath")
                     }
+                }
+                if (isJpegOut && exifSourcePath != null && File(exifSourcePath).exists()) {
+                    copyExif(exifSourcePath, file.absolutePath, dstRgba.cols(), dstRgba.rows())
                 }
                 val elapsed = SystemClock.elapsedRealtime() - started
                 Log.i(
                     TAG,
                     "inpaint ok ${dstRgba.cols()}x${dstRgba.rows()} radius=$radius " +
-                        "grow=${grow}px feather=${FEATHER_PX}px ${elapsed}ms",
+                        "grow=${grow}px feather=${FEATHER_PX}px jpeg=$isJpegOut ${elapsed}ms",
                 )
                 return mapOf(
                     "outputPath" to file.absolutePath,
@@ -174,31 +241,128 @@ object ImageProcessor {
         }
     }
 
+    /** 把 [repairedBgr] 中 [roi] 区域的 RGB 写回 [dstRgba]，同时保留 [srcRgba] 的原始 Alpha 通道。 */
+    private fun writeRepairedRoiRgba(
+        srcRgba: Mat,
+        repairedBgr: Mat,
+        dstRgba: Mat,
+        roi: Rect,
+    ) {
+        val srcRoiRgba = srcRgba.submat(roi)
+        val dstRoiRgba = dstRgba.submat(roi)
+        val repRoiBgr = repairedBgr.submat(roi)
+        val repRoiRgba = Mat()
+        val mergedRoi = Mat()
+        val srcChannels = ArrayList<Mat>(4)
+        val repChannels = ArrayList<Mat>(4)
+        try {
+            Imgproc.cvtColor(repRoiBgr, repRoiRgba, Imgproc.COLOR_BGR2RGBA)
+            Core.split(srcRoiRgba, srcChannels)
+            Core.split(repRoiRgba, repChannels)
+            Core.merge(
+                listOf(repChannels[0], repChannels[1], repChannels[2], srcChannels[3]),
+                mergedRoi,
+            )
+            mergedRoi.copyTo(dstRoiRgba)
+        } finally {
+            srcChannels.forEach { it.release() }
+            repChannels.forEach { it.release() }
+            mergedRoi.release()
+            repRoiRgba.release()
+            repRoiBgr.release()
+            dstRoiRgba.release()
+            srcRoiRgba.release()
+        }
+    }
+
+    private fun isJpegPath(path: String): Boolean {
+        val lower = path.lowercase()
+        return lower.endsWith(".jpg") || lower.endsWith(".jpeg")
+    }
+
+    /** 将原图的拍摄参数、时间、GPS、色彩空间等 EXIF 元数据复制到输出 JPEG，并重置方向为正常。 */
+    private fun copyExif(
+        sourcePath: String,
+        targetPath: String,
+        width: Int,
+        height: Int,
+    ) {
+        try {
+            val srcExif = ExifInterface(sourcePath)
+            val dstExif = ExifInterface(targetPath)
+            for (tag in EXIF_COPY_TAGS) {
+                val value = srcExif.getAttribute(tag) ?: continue
+                dstExif.setAttribute(tag, value)
+            }
+            // 像素方向已在 Flutter 解码阶段摆正，必须把 Orientation 重置为 NORMAL，否则相册会二次旋转
+            dstExif.setAttribute(
+                ExifInterface.TAG_ORIENTATION,
+                ExifInterface.ORIENTATION_NORMAL.toString(),
+            )
+            dstExif.setAttribute(ExifInterface.TAG_IMAGE_WIDTH, width.toString())
+            dstExif.setAttribute(ExifInterface.TAG_IMAGE_LENGTH, height.toString())
+            dstExif.setAttribute(ExifInterface.TAG_PIXEL_X_DIMENSION, width.toString())
+            dstExif.setAttribute(ExifInterface.TAG_PIXEL_Y_DIMENSION, height.toString())
+            dstExif.saveAttributes()
+        } catch (e: Throwable) {
+            Log.w(TAG, "copyExif 失败（保留图片本身）：${e.message}")
+        }
+    }
+
+    /**
+     * 按选区短边自适应收紧掩膜外扩像素，避免小水印被过度膨胀成大片模糊。
+     * `requestedGrowPx <= 0` 时返回 0，保持旧调用零外扩语义。
+     */
+    fun computeAdaptiveGrowPx(mask: Mat, requestedGrowPx: Int): Int {
+        val rect = boundingBox(mask) ?: return 0
+        return adaptiveGrowFromRect(rect, requestedGrowPx)
+    }
+
+    private fun adaptiveGrowFromRect(rect: Rect, requestedGrowPx: Int): Int {
+        val clamped = requestedGrowPx.coerceIn(0, 16)
+        if (clamped == 0) return 0
+        val minSide = minOf(rect.width, rect.height)
+        val limit = (minSide * 0.18).toInt().coerceIn(1, 6)
+        return minOf(clamped, limit)
+    }
+
+    private fun resolveEffectiveFeather(effectiveGrow: Int, featherPx: Int): Int {
+        val base = featherPx.coerceIn(0, 16)
+        return if (effectiveGrow > 0) maxOf(base, effectiveGrow.coerceIn(2, 5)) else base
+    }
+
+    /**
+     * 供图片与视频路径共用的「实际发生像素修改的 ROI」计算。
+     * 包含自适应外扩、边界羽化以及 2px 安全余量，框外像素在修复前后完全一致。
+     */
+    fun computeInpaintRoi(
+        mask: Mat,
+        width: Int,
+        height: Int,
+        radius: Int,
+        growPx: Int = 0,
+        featherPx: Int = 0,
+    ): Rect? {
+        if (width <= 0 || height <= 0) return null
+        val rect = boundingBox(mask) ?: return null
+        val effectiveGrow = adaptiveGrowFromRect(rect, growPx)
+        val effectiveFeather = resolveEffectiveFeather(effectiveGrow, featherPx)
+        val margin = effectiveGrow + effectiveFeather + 2
+        val x0 = (rect.x - margin).coerceAtLeast(0)
+        val y0 = (rect.y - margin).coerceAtLeast(0)
+        val x1 = (rect.x + rect.width + margin).coerceAtMost(width)
+        val y1 = (rect.y + rect.height + margin).coerceAtMost(height)
+        if (x1 <= x0 || y1 <= y0) return null
+        return Rect(x0, y0, x1 - x0, y1 - y0)
+    }
+
     /**
      * 修复一个 8UC3 BGR Mat，返回**新的** Mat（调用方负责 release）。
      *
-     * 抽出来的原因：视频逐帧也要走同一份 OpenCV 逻辑。视频那条路径上帧已经是 NV12 / I420，
-     * 先转成 BGR 再进来，能省掉一次「BGR→RGBA→bitmapToMat→RGBA2BGR」的往返。
-     * 两条路径共用这一个函数，就不会出现「图片修得对、视频修得不一样」这种鬼故事。
-     *
-     * **只在 Mask 的外接矩形上跑 inpaint**，不碰整幅图。
-     * Telea 是局部算法（只用到洞周围 radius 内的像素），外接矩形外再多留一圈
-     * 上下文就够了，结果与全图修复等价。收益是实测出来的：
-     * 960×540 上框 172×92，单帧从 **116 ms 降到 6 ms**（视频 150 帧的总耗时砍掉一半）。
-     *
-     * ## 两个新参数（2026-11-01）各自治一个实测出来的病
-     *
-     * **`growPx`：先把 Mask 外扩再修。** TELEA 以洞边界为颜色来源向内扩散，
-     * 边界只要沾到水印的抗锯齿 / JPEG·H.264 块噪声，笔画颜色就会被抹进洞里，
-     * 形成一层「鬼影」。cafe 实测（文字区纹理 std，原图 3.04）：
-     * 框余量 2px → 15.57（鬼影最重）、6px → 9.67、12~14px → 1.43（干净）。
-     * 即**污染半径约 10~14px**，H.264 宏块更大，视频按 16px 起步。
-     * 真机成品里抓到过同款：掩膜下边界切在字中间，右下角留着半个字母。
-     *
-     * **`featherPx`：修完在边界做过渡。** 直接 copyTo 会留下一条硬接缝，
-     * 实测接缝梯度是内部的 3.33 倍；3px 羽化后降到 1.66 倍。
-     *
-     * 两个参数默认 0 = 原来的行为，老用例与老结果不受影响。
+     * 在原有 TELEA 的基础上叠加三层保护：
+     * 1. 按选区短边自适应收紧 `growPx`，防止小水印被过度外扩破坏干净背景；
+     * 2. 对中大选区（短边 > 24 px）做 0.5× 粗尺度金字塔融合，削弱大洞对角线 X 形色斑；
+     * 3. 统计周围干净背景的高频残差并向洞内注入微纹理，消除纯色扩散带来的涂抹感。
      */
     fun inpaintBgr(
         srcBgr: Mat,
@@ -218,24 +382,27 @@ object ImageProcessor {
                 "${mask.cols()}x${mask.rows()} 尺寸不一致"
         }
 
-        val grow = growPx.coerceIn(0, 32)
-        val feather = featherPx.coerceIn(0, 16)
-        val workMask = if (grow > 0) dilateMask(mask, grow) else mask
+        val maskRect = boundingBox(mask) ?: return srcBgr.clone()
+        val minSide = minOf(maskRect.width, maskRect.height)
+        val effectiveGrow = adaptiveGrowFromRect(maskRect, growPx)
+        val effectiveFeather = resolveEffectiveFeather(effectiveGrow, featherPx)
+        val workMask = if (effectiveGrow > 0) dilateMask(mask, effectiveGrow) else mask
 
         try {
-            // ROI 余量要把外扩与羽化都算进去，否则羽化带会被裁掉一半
+            // ROI 余量要把上下文、外扩与羽化都算进去，否则 Telea 采样或羽化带会被裁掉
             val roi = inpaintRoi(
                 workMask,
                 srcBgr.cols(),
                 srcBgr.rows(),
-                radius + grow + feather,
-            ) ?: return srcBgr.clone() // mask 全黑：没有要修的地方，原样返回
+                radius + effectiveGrow + effectiveFeather,
+            ) ?: return srcBgr.clone()
 
             val out = srcBgr.clone()
             val srcRoi = srcBgr.submat(roi)
             val outRoi = out.submat(roi)
             val maskRoi = workMask.submat(roi)
             val restored = Mat()
+            val dist = Mat()
             try {
                 // inpaint 不保证接受非连续内存（submat 可能就是），clone 一份只有几十 KB，别赌
                 val srcCopy = srcRoi.clone()
@@ -248,15 +415,21 @@ object ImageProcessor {
                         radius.toDouble(),
                         Photo.INPAINT_TELEA,
                     )
+                    Imgproc.distanceTransform(maskCopy, dist, Imgproc.DIST_L2, 3)
+                    if (minSide > 24 && srcCopy.cols() >= 16 && srcCopy.rows() >= 16) {
+                        blendCoarsePyramid(srcCopy, maskCopy, restored, dist, radius)
+                    }
+                    injectContextGrain(srcCopy, maskCopy, restored, dist)
                 } finally {
                     srcCopy.release()
                     maskCopy.release()
                 }
                 restored.copyTo(outRoi)
-                if (feather > 0) {
-                    blendSeam(srcRoi, outRoi, maskRoi, feather)
+                if (effectiveFeather > 0) {
+                    blendSeam(srcRoi, outRoi, maskRoi, effectiveFeather)
                 }
             } finally {
+                dist.release()
                 restored.release()
                 maskRoi.release()
                 outRoi.release()
@@ -265,6 +438,148 @@ object ImageProcessor {
             return out
         } finally {
             if (workMask !== mask) workMask.release()
+        }
+    }
+
+    /**
+     * 对中大选区做 0.5× 低分辨率引导融合：
+     * 仅在远离边界的洞深处（dist > radius）混入粗尺度修复结果，保留边缘和细笔画全分辨率精度。
+     */
+    private fun blendCoarsePyramid(
+        srcCopy: Mat,
+        maskCopy: Mat,
+        restored: Mat,
+        dist: Mat,
+        radius: Int,
+    ) {
+        val smallW = (srcCopy.cols() / 2).coerceAtLeast(1)
+        val smallH = (srcCopy.rows() / 2).coerceAtLeast(1)
+        val smallSrc = Mat()
+        val smallMask = Mat()
+        val smallRestored = Mat()
+        val coarseRestored = Mat()
+        val alpha = Mat()
+        val alpha3 = Mat()
+        val fineF = Mat()
+        val coarseF = Mat()
+        val delta = Mat()
+        val scaled = Mat()
+        val blended = Mat()
+        try {
+            Imgproc.resize(
+                srcCopy,
+                smallSrc,
+                Size(smallW.toDouble(), smallH.toDouble()),
+                0.0,
+                0.0,
+                Imgproc.INTER_AREA,
+            )
+            Imgproc.resize(
+                maskCopy,
+                smallMask,
+                Size(smallW.toDouble(), smallH.toDouble()),
+                0.0,
+                0.0,
+                Imgproc.INTER_NEAREST,
+            )
+            if (Core.countNonZero(smallMask) == 0) return
+
+            Photo.inpaint(
+                smallSrc,
+                smallMask,
+                smallRestored,
+                maxOf(2.0, radius * 0.5),
+                Photo.INPAINT_TELEA,
+            )
+            Imgproc.resize(
+                smallRestored,
+                coarseRestored,
+                srcCopy.size(),
+                0.0,
+                0.0,
+                Imgproc.INTER_LINEAR,
+            )
+
+            val r = radius.coerceAtLeast(1).toDouble()
+            Core.subtract(dist, Scalar(r), alpha)
+            Core.multiply(alpha, Scalar(1.0 / (r * 2.0)), alpha)
+            Imgproc.threshold(alpha, alpha, 0.0, 0.0, Imgproc.THRESH_TOZERO)
+            Imgproc.threshold(alpha, alpha, 0.65, 0.65, Imgproc.THRESH_TRUNC)
+            Core.merge(listOf(alpha, alpha, alpha), alpha3)
+
+            restored.convertTo(fineF, CvType.CV_32FC3)
+            coarseRestored.convertTo(coarseF, CvType.CV_32FC3)
+            Core.subtract(coarseF, fineF, delta)
+            Core.multiply(delta, alpha3, scaled)
+            Core.add(fineF, scaled, blended)
+            blended.convertTo(restored, CvType.CV_8UC3)
+        } finally {
+            smallSrc.release()
+            smallMask.release()
+            smallRestored.release()
+            coarseRestored.release()
+            alpha.release()
+            alpha3.release()
+            fineF.release()
+            coarseF.release()
+            delta.release()
+            scaled.release()
+            blended.release()
+        }
+    }
+
+    /**
+     * 基于 ROI 内非掩膜区域的局部高频残差，在洞内（dist > 1.5）补偿轻度微纹理，
+     * 消除纯色扩散带来的平滑补丁感；纯色背景（grainStd < 0.8）保持零扰动。
+     */
+    private fun injectContextGrain(
+        srcCopy: Mat,
+        maskCopy: Mat,
+        restored: Mat,
+        dist: Mat,
+    ) {
+        val bgMask = Mat()
+        val blur = Mat()
+        val diff = Mat()
+        val noise = Mat()
+        val grainWeight = Mat()
+        val noise3 = Mat()
+        val restoredF = Mat()
+        val added = Mat()
+        try {
+            Core.bitwise_not(maskCopy, bgMask)
+            if (Core.countNonZero(bgMask) == 0) return
+
+            Imgproc.GaussianBlur(srcCopy, blur, Size(3.0, 3.0), 0.0)
+            Core.absdiff(srcCopy, blur, diff)
+            val m = Core.mean(diff, bgMask)
+            val grainStd = ((m.`val`[0] + m.`val`[1] + m.`val`[2]) / 3.0).coerceIn(0.0, 4.5)
+            if (grainStd < 0.8) return
+
+            noise.create(srcCopy.rows(), srcCopy.cols(), CvType.CV_32FC1)
+            Core.randn(noise, 0.0, grainStd * 1.8)
+            Imgproc.GaussianBlur(noise, noise, Size(3.0, 3.0), 0.7)
+
+            Core.subtract(dist, Scalar(1.5), grainWeight)
+            Core.multiply(grainWeight, Scalar(1.0 / 2.5), grainWeight)
+            Imgproc.threshold(grainWeight, grainWeight, 0.0, 0.0, Imgproc.THRESH_TOZERO)
+            Imgproc.threshold(grainWeight, grainWeight, 1.0, 1.0, Imgproc.THRESH_TRUNC)
+
+            Core.multiply(noise, grainWeight, noise)
+            Core.merge(listOf(noise, noise, noise), noise3)
+
+            restored.convertTo(restoredF, CvType.CV_32FC3)
+            Core.add(restoredF, noise3, added)
+            added.convertTo(restored, CvType.CV_8UC3)
+        } finally {
+            bgMask.release()
+            blur.release()
+            diff.release()
+            noise.release()
+            grainWeight.release()
+            noise3.release()
+            restoredF.release()
+            added.release()
         }
     }
 
@@ -320,6 +635,16 @@ object ImageProcessor {
         }
     }
 
+    private fun boundingBox(mask: Mat): Rect? {
+        val points = MatOfPoint()
+        return try {
+            Core.findNonZero(mask, points)
+            if (points.empty()) null else Imgproc.boundingRect(points)
+        } finally {
+            points.release()
+        }
+    }
+
     /**
      * 算出「真正要做 inpaint 的那块矩形」：Mask 外接矩形 + 一圈上下文。
      *
@@ -328,14 +653,7 @@ object ImageProcessor {
      * 返回 null 表示 mask 全黑。
      */
     private fun inpaintRoi(mask: Mat, width: Int, height: Int, radius: Int): Rect? {
-        val points = MatOfPoint()
-        val rect = try {
-            Core.findNonZero(mask, points)
-            if (points.empty()) return null
-            Imgproc.boundingRect(points)
-        } finally {
-            points.release()
-        }
+        val rect = boundingBox(mask) ?: return null
         val pad = (radius * 3 + 8).coerceAtLeast(8)
         val x0 = (rect.x - pad).coerceAtLeast(0)
         val y0 = (rect.y - pad).coerceAtLeast(0)

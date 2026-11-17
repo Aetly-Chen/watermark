@@ -23,9 +23,10 @@ object GallerySaver {
         val resolver = context.contentResolver
         val isQ = Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q
 
+        val mimeType = mimeTypeForImage(displayName, sourcePath)
         val values = ContentValues().apply {
             put(MediaStore.Images.Media.DISPLAY_NAME, displayName)
-            put(MediaStore.Images.Media.MIME_TYPE, "image/png")
+            put(MediaStore.Images.Media.MIME_TYPE, mimeType)
             if (isQ) {
                 put(
                     MediaStore.Images.Media.RELATIVE_PATH,
@@ -111,5 +112,15 @@ object GallerySaver {
             resolver.update(uri, done, null, null)
         }
         return uri.toString()
+    }
+
+    private fun mimeTypeForImage(displayName: String, sourcePath: String): String {
+        val candidate = if (displayName.contains('.')) displayName else sourcePath
+        val lower = candidate.lowercase()
+        return when {
+            lower.endsWith(".jpg") || lower.endsWith(".jpeg") -> "image/jpeg"
+            lower.endsWith(".webp") -> "image/webp"
+            else -> "image/png"
+        }
     }
 }

@@ -335,16 +335,18 @@ class ImageEditController extends _$ImageEditController {
         taskId: taskId,
       );
 
+      final ext = prepared.isJpeg ? 'jpg' : 'png';
       final processor = ref.read(watermarkProcessorProvider);
       final result = await processor.process(
         ProcessingRequest(
           taskId: taskId,
           inputPath: prepared.inputPath,
-          outputPath: '${workDir.path}/out_$taskId.png',
+          outputPath: '${workDir.path}/out_$taskId.$ext',
           mediaKind: MediaKind.image,
           plan: MaskPlan.fixed(maskPath: prepared.maskPath),
           // 用户在「修复强度」里选的值，一路送到 Kotlin 的 inpaint
           radius: state.radius,
+          exifSourcePath: prepared.exifSourcePath,
         ),
       );
 
@@ -440,6 +442,10 @@ class ImageEditController extends _$ImageEditController {
 
     state = state.copyWith(saving: true, clearSave: true);
     try {
+      final lowerPath = path.toLowerCase();
+      final ext = (lowerPath.endsWith('.jpg') || lowerPath.endsWith('.jpeg'))
+          ? 'jpg'
+          : 'png';
       final stamp = DateTime.now();
       final name =
           '水印工坊_${stamp.year}'
@@ -447,7 +453,7 @@ class ImageEditController extends _$ImageEditController {
           '${stamp.day.toString().padLeft(2, '0')}_'
           '${stamp.hour.toString().padLeft(2, '0')}'
           '${stamp.minute.toString().padLeft(2, '0')}'
-          '${stamp.second.toString().padLeft(2, '0')}.png';
+          '${stamp.second.toString().padLeft(2, '0')}.$ext';
 
       final uri = await ref
           .read(gallerySaverProvider)

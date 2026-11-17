@@ -52,14 +52,16 @@ void main() {
 
     test('未导出的成果单独计数，不进「可清理」', () async {
       file('out_1700000000000.png', 400);
+      file('out_1700000000001.jpg', 500);
       file('fixed_1700000000000.mp4', 900);
       file('in_1700000000000.png', 100);
+      file('raw_1700000000001.jpg', 250);
 
       final snapshot = await store.inspect();
 
-      expect(snapshot.removableBytes, 100, reason: 'in_ 是可再生的输入副本');
-      expect(snapshot.keptBytes, 1300);
-      expect(snapshot.keptCount, 2);
+      expect(snapshot.removableBytes, 350, reason: 'in_ 与 raw_ 是可再生的输入副本');
+      expect(snapshot.keptBytes, 1800);
+      expect(snapshot.keptCount, 3);
     });
 
     test('示例视频算缓存（能从 assets 重新落盘）', () async {

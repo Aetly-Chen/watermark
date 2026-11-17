@@ -4,6 +4,7 @@ import 'dart:ui' as ui;
 import 'dart:ui' show Offset, Rect;
 
 import 'package:flutter_test/flutter_test.dart';
+import 'package:image/image.dart' as img;
 import 'package:watermark_remover/core/processing/processing_error.dart';
 import 'package:watermark_remover/features/image_editor/domain/mask_draft.dart';
 import 'package:watermark_remover/features/image_editor/infrastructure/mask_composer.dart';
@@ -237,6 +238,38 @@ void main() {
         ),
       ),
     );
+  });
+
+  test('isJpegBytes 与 JPEG 输入：生成 raw_<task>.jpg 并标记 isJpeg', () async {
+    final pngSource = await _solidPng(20, 20);
+    expect(MaskComposer.isJpegBytes(pngSource), isFalse);
+    expect(MaskComposer.isJpegBytes(Uint8List.fromList([0xFF, 0xD8])), isFalse);
+
+    final jpgSource = Uint8List.fromList(
+      img.encodeJpg(img.Image(width: 24, height: 16)),
+    );
+    expect(MaskComposer.isJpegBytes(jpgSource), isTrue);
+
+    final prepared = await MaskComposer.prepare(
+      sourceBytes: jpgSource,
+      draft: const MaskDraft(rect: ui.Rect.fromLTWH(0.2, 0.2, 0.4, 0.4)),
+      workDir: workDir,
+      taskId: 'unit-jpg',
+    );
+
+    expect(prepared.isJpeg, isTrue);
+    expect(prepared.exifSourcePath, '${workDir.path}/raw_unit-jpg.jpg');
+    expect(File(prepared.exifSourcePath!).existsSync(), isTrue);
+    expect(File(prepared.exifSourcePath!).readAsBytesSync(), jpgSource);
+
+    final pngPrepared = await MaskComposer.prepare(
+      sourceBytes: pngSource,
+      draft: const MaskDraft(rect: ui.Rect.fromLTWH(0.2, 0.2, 0.4, 0.4)),
+      workDir: workDir,
+      taskId: 'unit-png',
+    );
+    expect(pngPrepared.isJpeg, isFalse);
+    expect(pngPrepared.exifSourcePath, isNull);
   });
 }
 

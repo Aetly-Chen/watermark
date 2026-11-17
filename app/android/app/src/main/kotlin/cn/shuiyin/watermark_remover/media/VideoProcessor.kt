@@ -7,6 +7,7 @@ import android.media.MediaCodecInfo
 import android.media.MediaExtractor
 import android.media.MediaFormat
 import android.media.MediaMuxer
+import android.os.Build
 import android.os.SystemClock
 import android.util.Log
 import org.opencv.android.OpenCVLoader
@@ -15,6 +16,7 @@ import org.opencv.core.CvType
 import org.opencv.core.Mat
 import org.opencv.core.MatOfPoint
 import org.opencv.core.Point
+import org.opencv.core.Rect as CvRect
 import org.opencv.core.Scalar
 import org.opencv.core.Size
 import org.opencv.imgcodecs.Imgcodecs
@@ -70,8 +72,9 @@ object VideoProcessor {
     /** 每处理这么多帧报一次进度。太密会把主线程刷爆。 */
     private const val PROGRESS_EVERY = 5
 
-    /** 视频掩膜外扩：H.264 宏块 16px，比图片的 12px 再多一档。 */
-    private const val VIDEO_GROW_PX = 16
+    /** 视频掩膜自适应外扩上限：矩形框最多 6px，涂抹笔迹只补 2px。 */
+    private const val VIDEO_GROW_PX = 6
+    private const val VIDEO_BRUSH_GROW_PX = 2
 
     /** 边界羽化（像素），与图片路径一致。 */
     private const val VIDEO_FEATHER_PX = 3
@@ -388,6 +391,8 @@ object VideoProcessor {
         // ---- 快路径：整块搬运 + OpenCV cvtColor，避免逐像素 Kotlin 循环 ----
         /** 打包成 NV12 的连续缓冲（Y 全部 + UV 交错），长度 = w*h*3/2。按画幅懒分配。 */
         private var packed = ByteArray(0)
+        /** 解码出来的原始 YUV 字节备份；框外区域直接原样拷回编码器，避免色彩往返损伤。 */
+        private var origYuv = ByteArray(0)
         /** 把 packed 当 Mat 用，避免每帧新建（OpenCV 侧要的是 (h*3/2) x w 的单通道） */
         private var packedMat: Mat? = null
         /** BGR → I420 的中间结果（planar）；前 h 行是 Y，后面两块是 U/V */
@@ -396,6 +401,9 @@ object VideoProcessor {
         private var uvMat: Mat? = null
         /** uvMat 的字节快照，长度 w*h/2 */
         private var uvBytes = ByteArray(0)
+        /** 局部 ROI 的 I420 中间矩阵与字节缓冲（按 ROI 尺寸懒分配/复用） */
+        private var roiI420Mat: Mat? = null
+        private var roiI420Bytes = ByteArray(0)
         /** 解码帧的 UV 是「U 在前」(NV12) 还是「V 在前」(NV21) */
         private var decoderUFirst = true
         /** 编码器输入缓冲的 UV 顺序，可能与解码器不同 */
@@ -487,6 +495,7 @@ object VideoProcessor {
                 return
             }
             packed = ByteArray(need)
+            origYuv = ByteArray(need)
             uvBytes = ByteArray(w * h / 2)
             packedMat?.release()
             packedMat = Mat(h * 3 / 2, w, CvType.CV_8UC1)
@@ -728,6 +737,8 @@ object VideoProcessor {
                 i420Mat = null
                 uvMat?.release()
                 uvMat = null
+                roiI420Mat?.release()
+                roiI420Mat = null
                 grayMat?.release()
                 grayMat = null
                 keyGray?.release()
@@ -755,30 +766,79 @@ object VideoProcessor {
             }
 
             val bitrate = if (sourceBitrate > 0) {
-                sourceBitrate
+                (sourceBitrate * 1.25)
+                    .toLong()
+                    .coerceIn(sourceBitrate.toLong(), 50_000_000L)
+                    .toInt()
             } else {
-                // 源文件没报码率时给个保守值：0.12 bit/像素 ≈ 720p30 约 3Mbps，肉眼够用
-                (rawW * rawH * frameRate * 0.12).toInt().coerceIn(1_000_000, 20_000_000)
+                // 源文件没报码率时给足余量，避免二次编码画质明显劣化
+                (rawW * rawH * frameRate * 0.18).toInt().coerceIn(2_000_000, 35_000_000)
             }
 
-            val format = MediaFormat.createVideoFormat(MIME_VIDEO, rawW, rawH)
-            format.setInteger(
-                MediaFormat.KEY_COLOR_FORMAT,
-                MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible,
-            )
-            format.setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
-            format.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate)
-            // 1 秒一个关键帧：让成品可以随便拖动，代价是体积略大
-            format.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+            fun buildEncoderFormat(copyColorMeta: Boolean): MediaFormat {
+                val fmt = MediaFormat.createVideoFormat(MIME_VIDEO, rawW, rawH)
+                fmt.setInteger(
+                    MediaFormat.KEY_COLOR_FORMAT,
+                    MediaCodecInfo.CodecCapabilities.COLOR_FormatYUV420Flexible,
+                )
+                fmt.setInteger(MediaFormat.KEY_BIT_RATE, bitrate)
+                fmt.setInteger(MediaFormat.KEY_FRAME_RATE, frameRate)
+                // 1 秒一个关键帧：保证可精确拖动与关键帧对齐
+                fmt.setInteger(MediaFormat.KEY_I_FRAME_INTERVAL, 1)
+                if (copyColorMeta && Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                    for (key in arrayOf(
+                        MediaFormat.KEY_COLOR_STANDARD,
+                        MediaFormat.KEY_COLOR_RANGE,
+                        MediaFormat.KEY_COLOR_TRANSFER,
+                    )) {
+                        if (decoderFormat.containsKey(key)) {
+                            try {
+                                fmt.setInteger(key, decoderFormat.getInteger(key))
+                            } catch (_: Throwable) {
+                            }
+                        }
+                    }
+                }
+                return fmt
+            }
 
-            val codec = MediaCodec.createEncoderByType(MIME_VIDEO)
+            val hasColorMeta = Build.VERSION.SDK_INT >= Build.VERSION_CODES.N &&
+                arrayOf(
+                    MediaFormat.KEY_COLOR_STANDARD,
+                    MediaFormat.KEY_COLOR_RANGE,
+                    MediaFormat.KEY_COLOR_TRANSFER,
+                ).any { decoderFormat.containsKey(it) }
+
+            var codec = MediaCodec.createEncoderByType(MIME_VIDEO)
             try {
-                codec.configure(format, null, null, MediaCodec.CONFIGURE_FLAG_ENCODE)
+                codec.configure(
+                    buildEncoderFormat(copyColorMeta = hasColorMeta),
+                    null,
+                    null,
+                    MediaCodec.CONFIGURE_FLAG_ENCODE,
+                )
             } catch (e: Throwable) {
                 codec.release()
-                throw VideoUnsupportedException(
-                    "编码器不接受 YUV420Flexible（${e.javaClass.simpleName}: ${e.message}）",
-                )
+                if (!hasColorMeta) {
+                    throw VideoUnsupportedException(
+                        "编码器不接受 YUV420Flexible（${e.javaClass.simpleName}: ${e.message}）",
+                    )
+                }
+                Log.w(TAG, "编码器不支持透传色彩参数，回退默认配置：${e.message}")
+                codec = MediaCodec.createEncoderByType(MIME_VIDEO)
+                try {
+                    codec.configure(
+                        buildEncoderFormat(copyColorMeta = false),
+                        null,
+                        null,
+                        MediaCodec.CONFIGURE_FLAG_ENCODE,
+                    )
+                } catch (e2: Throwable) {
+                    codec.release()
+                    throw VideoUnsupportedException(
+                        "编码器不接受 YUV420Flexible（${e2.javaClass.simpleName}: ${e2.message}）",
+                    )
+                }
             }
             codec.start()
 
@@ -884,25 +944,37 @@ object VideoProcessor {
                 tTrack += SystemClock.elapsedRealtime() - mark
                 mark = SystemClock.elapsedRealtime()
             }
-            // 与图片路径同一份修复逻辑（共用 ImageProcessor.inpaintBgr）。
-            // 视频这边外扩要更大：H.264 的宏块是 16px，水印边缘的块噪声比 JPEG 更外扩，
-            // 掩膜只要贴着笔画，TELEA 就会把块噪声抹成一层鬼影（真机成品里出现过残留字母）。
-            //
-            // 代价说清楚：大洞上外扩会让擦除面积变大（实测 24% → 29%），接缝比 1.17 → 1.24，
-            // 填充区纹理 std 几乎不变（53.46 → 53.28）。也就是**大洞这个问题外扩救不了**，
-            // 它只能救"框贴边导致残留"；大洞要靠 BIG_MASK_RATIO 那条警告把人劝回来。
+            // 涂抹笔迹本身已贴合水印，外扩限 2px；矩形框最多 6px 并受短边比例约束
+            val growPx = if (maskBase != null) VIDEO_BRUSH_GROW_PX else VIDEO_GROW_PX
+            val rawRoi = ImageProcessor.computeInpaintRoi(
+                maskMat,
+                frameWidth,
+                frameHeight,
+                radius,
+                growPx = growPx,
+                featherPx = VIDEO_FEATHER_PX,
+            )
+            val evenRoi = alignEvenRoi(rawRoi, frameWidth, frameHeight)
             val repaired = ImageProcessor.inpaintBgr(
                 frameBgr,
                 maskMat,
                 radius,
-                growPx = VIDEO_GROW_PX,
+                growPx = growPx,
                 featherPx = VIDEO_FEATHER_PX,
             )
             tInpaint += SystemClock.elapsedRealtime() - mark
             mark = SystemClock.elapsedRealtime()
             try {
-                // 编码器的输入 Image 也可能比画幅大，这里同样只写可见区域
-                bgrToYuv(repaired, inImage, scratch, frameWidth, frameHeight)
+                // 框外区域直接沿用解码原始 YUV，只把 evenRoi 的修复像素转回 YUV 写回
+                bgrToYuv(
+                    repaired,
+                    inImage,
+                    scratch,
+                    frameWidth,
+                    frameHeight,
+                    evenRoi = evenRoi,
+                    origImage = image,
+                )
             } finally {
                 repaired.release()
             }
@@ -1344,6 +1416,11 @@ object VideoProcessor {
                 }
                 Log.i(TAG, "fast yuv decode OK, uFirst=$decoderUFirst")
             }
+
+            // 保存解码器输出的原始 YUV 字节，编码阶段框外像素直接沿用它，避免色彩空间往返损伤
+            if (origYuv.size == packed.size) {
+                System.arraycopy(packed, 0, origYuv, 0, packed.size)
+            }
         }
 
         private fun decodeCvt(uFirst: Boolean) =
@@ -1493,71 +1570,101 @@ object VideoProcessor {
             dst.put(0, 0, scratch)
         }
 
+        /** 将 [rawRoi] 四边对齐到偶数边界，保证 2×2 色度采样网格不错位。 */
+        private fun alignEvenRoi(rawRoi: CvRect?, w: Int, h: Int): CvRect? {
+            if (rawRoi == null || w < 2 || h < 2) return null
+            val maxW = w and 1.inv()
+            val maxH = h and 1.inv()
+            val x0 = (rawRoi.x and 1.inv()).coerceIn(0, (maxW - 2).coerceAtLeast(0))
+            var y0 = (rawRoi.y and 1.inv()).coerceIn(0, (maxH - 2).coerceAtLeast(0))
+            val x1 = ((rawRoi.x + rawRoi.width + 1) and 1.inv()).coerceIn(x0 + 2, maxW)
+            var y1 = ((rawRoi.y + rawRoi.height + 1) and 1.inv()).coerceIn(y0 + 2, maxH)
+            if (x1 <= x0 || y1 <= y0) return null
+            // I420 转换在高度为 4 的倍数时 U/V 平面各占整行，不会截断色度行
+            if (maxH >= 4 && (y1 - y0) % 4 != 0) {
+                if (y1 + 2 <= maxH) {
+                    y1 += 2
+                } else if (y0 >= 2) {
+                    y0 -= 2
+                }
+            }
+            return CvRect(x0, y0, x1 - x0, y1 - y0)
+        }
+
+        private fun ensureRoiI420(rw: Int, rh: Int) {
+            val need = rw * rh * 3 / 2
+            val current = roiI420Mat
+            if (current != null && current.cols() == rw && current.rows() == rh * 3 / 2 && roiI420Bytes.size == need) {
+                return
+            }
+            roiI420Mat?.release()
+            roiI420Mat = Mat(rh * 3 / 2, rw, CvType.CV_8UC1)
+            roiI420Bytes = ByteArray(need)
+        }
+
         /**
          * BGR → 编码器的 YUV_420_888（semi-planar）。
          *
-         * ## 为什么不是一句 cvtColor
-         *
-         * OpenCV **只提供解码方向**的 NV12 转换（`COLOR_YUV2BGR_NV12`），反向的
-         * `COLOR_BGR2YUV_NV12` **根本不存在** —— 写了是编译错误，不是运行时报错。
-         *
-         * 所以拆成两步，两步都在 C++ 里：
-         * 1. `cvtColor(bgr, i420, COLOR_BGR2YUV_I420)` —— 得到 Y、U 平面、V 平面三块；
-         * 2. `Core.merge(listOf(u, v))` —— 两个单通道平面合成双通道矩阵，
-         *    内存布局就是 `U0 V0 U1 V1…`，正好是 NV12 的 UV 平面。
-         *
-         * Kotlin 侧只有两次整块 memcpy 加按行写平面，一个像素都不碰。
-         * （逐像素版本 [bgrToYuvSlow] 是 122 ms/帧，见 [yuvToBgr] 的说明。）
-         *
-         * 注意两边要**各自判** UV 顺序：解码器的 NV12 不代表编码器也是 NV12。
-         * 编码器输入缓冲里是垃圾数据，内容上判不出来，所以用 [probeEncoderUFirst] 自己造证据。
-         *
-         * 另外 **不能用** `buffer.put(index, src, off, len)` —— 那是 Java 13 才加的绝对批量写，
-         * Android 上要 API 33 才有，真机（API 29）会直接 `NoSuchMethodError`。
-         * 这里一律改成「先 position 再 put」，API 1 就有。
+         * 优先保留 [origYuv] 的框外原始 YUV 字节，仅对 [evenRoi] 做 `BGR → I420` 并覆写对应 Y / UV。
          */
-        private fun bgrToYuv(src: Mat, image: Image, scratch: ByteArray, w: Int, h: Int) {
+        private fun bgrToYuv(
+            src: Mat,
+            image: Image,
+            scratch: ByteArray,
+            w: Int,
+            h: Int,
+            evenRoi: CvRect? = null,
+            origImage: Image? = null,
+        ) {
             val planes = image.planes
             val semiPlanar = planes[1].pixelStride == 2 && planes[2].pixelStride == 2
             if (fastPathBroken || !semiPlanar || planes[0].pixelStride != 1) {
-                bgrToYuvSlow(src, image, scratch, w, h)
+                bgrToYuvSlow(src, image, scratch, w, h, evenRoi, origImage)
                 return
             }
 
             ensurePacked(w, h)
-            val i420 = i420Mat ?: error("i420Mat 未初始化")
-            val uv = uvMat ?: error("uvMat 未初始化")
-
             if (!encoderUvProbed) {
                 encoderUvProbed = true
                 encoderUFirst = probeEncoderUFirst(planes)
                 Log.i(TAG, "encoder UV order probed → uFirst=$encoderUFirst (NV12=${encoderUFirst})")
             }
 
-            // 1) BGR → I420（C++ SIMD）
-            Imgproc.cvtColor(src, i420, Imgproc.COLOR_BGR2YUV_I420)
+            val totalNeed = w * h * 3 / 2
+            if (origYuv.size == totalNeed) {
+                copyOrigYuvToPacked(w, h)
+                if (evenRoi != null && evenRoi.width >= 2 && evenRoi.height >= 2) {
+                    writeRoiBgrToPacked(src, evenRoi, w, h)
+                }
+            } else {
+                val i420 = i420Mat ?: error("i420Mat 未初始化")
+                val uv = uvMat ?: error("uvMat 未初始化")
 
-            // 2) I420 的色度是两块连续平面：第 h 行起 h/4 行是 U，接着 h/4 行是 V。
-            //    reshape 成 (h/2)×(w/2) 再 merge 成双通道 → 内存天然交错
-            val uRows = i420.rowRange(h, h + h / 4)
-            val vRows = i420.rowRange(h + h / 4, h * 3 / 2)
-            val uMat = uRows.reshape(1, h / 2)
-            val vMat = vRows.reshape(1, h / 2)
-            uRows.release()
-            vRows.release()
-            try {
-                Core.merge(
-                    if (encoderUFirst) listOf(uMat, vMat) else listOf(vMat, uMat),
-                    uv,
-                )
-            } finally {
-                uMat.release()
-                vMat.release()
+                // 1) BGR → I420（C++ SIMD）
+                Imgproc.cvtColor(src, i420, Imgproc.COLOR_BGR2YUV_I420)
+
+                // 2) I420 的色度是两块连续平面：第 h 行起 h/4 行是 U，接着 h/4 行是 V。
+                //    reshape 成 (h/2)×(w/2) 再 merge 成双通道 → 内存天然交错
+                val uRows = i420.rowRange(h, h + h / 4)
+                val vRows = i420.rowRange(h + h / 4, h * 3 / 2)
+                val uMat = uRows.reshape(1, h / 2)
+                val vMat = vRows.reshape(1, h / 2)
+                uRows.release()
+                vRows.release()
+                try {
+                    Core.merge(
+                        if (encoderUFirst) listOf(uMat, vMat) else listOf(vMat, uMat),
+                        uv,
+                    )
+                } finally {
+                    uMat.release()
+                    vMat.release()
+                }
+
+                i420.get(0, 0, packed)                 // 前 w*h 字节就是 Y 平面
+                uv.get(0, 0, uvBytes)                  // w*h/2 字节，已经交错好
+                System.arraycopy(uvBytes, 0, packed, w * h, uvBytes.size)
             }
-
-            i420.get(0, 0, packed)                 // 前 w*h 字节就是 Y 平面
-            uv.get(0, 0, uvBytes)                  // w*h/2 字节，已经交错好
-            System.arraycopy(uvBytes, 0, packed, w * h, uvBytes.size)
 
             val yPlane = planes[0]
             // 只写可见区域；padding 铺成中性值，不给硬编码器留上一帧的脏数据
@@ -1585,24 +1692,88 @@ object VideoProcessor {
             val uvLimit = uvWrite.limit()
             for (y in 0 until h / 2) {
                 val off = y * uvRow
-                val src = uvBase + y * w
+                val srcOff = uvBase + y * w
                 val n = (uvLimit - off).coerceIn(0, w)
                 if (n > 0) {
                     uvWrite.position(off)
-                    uvWrite.put(packed, src, n)
+                    uvWrite.put(packed, srcOff, n)
                 }
-                // 每个平面的 buffer 都比整块 UV 区短语 1 个字节（两个平面互相 ±1 偏移，
+                // 每个平面的 buffer 都比整块 UV 区短 1 个字节（两个平面互相 ±1 偏移，
                 // 谁也够不到对方那一头）。正常只有最后一个字节会掉进这里，
                 // 而它恰好落在**另一个**平面的 buffer 里，用单字节写补上。
                 var i = n
                 while (i < w) {
                     val abs = off + i
                     if (abs < uvLimit) {
-                        uvWrite.put(abs, packed[src + i])
+                        uvWrite.put(abs, packed[srcOff + i])
                     } else {
-                        uvSibling.put(abs - 1, packed[src + i])
+                        uvSibling.put(abs - 1, packed[srcOff + i])
                     }
                     i++
+                }
+            }
+        }
+
+        private fun copyOrigYuvToPacked(w: Int, h: Int) {
+            val yBytes = w * h
+            System.arraycopy(origYuv, 0, packed, 0, yBytes)
+            val uvLen = w * h / 2
+            if (decoderUFirst == encoderUFirst) {
+                System.arraycopy(origYuv, yBytes, packed, yBytes, uvLen)
+            } else {
+                var i = yBytes
+                val end = yBytes + uvLen
+                while (i + 1 < end) {
+                    packed[i] = origYuv[i + 1]
+                    packed[i + 1] = origYuv[i]
+                    i += 2
+                }
+            }
+        }
+
+        private fun writeRoiBgrToPacked(src: Mat, evenRoi: CvRect, w: Int, h: Int) {
+            val rw = evenRoi.width
+            val rh = evenRoi.height
+            val x0 = evenRoi.x
+            val y0 = evenRoi.y
+            ensureRoiI420(rw, rh)
+            val roiI420 = roiI420Mat ?: error("roiI420Mat 未初始化")
+            val roiSub = src.submat(evenRoi)
+            val roiCopy = roiSub.clone()
+            try {
+                Imgproc.cvtColor(roiCopy, roiI420, Imgproc.COLOR_BGR2YUV_I420)
+            } finally {
+                roiCopy.release()
+                roiSub.release()
+            }
+            roiI420.get(0, 0, roiI420Bytes)
+
+            for (ry in 0 until rh) {
+                System.arraycopy(roiI420Bytes, ry * rw, packed, (y0 + ry) * w + x0, rw)
+            }
+
+            val cw = rw / 2
+            val ch = rh / 2
+            val uOff = rw * rh
+            val vOff = uOff + cw * ch
+            val uvBase = w * h
+            val cx0 = x0 / 2
+            val cy0 = y0 / 2
+            for (cy in 0 until ch) {
+                val dstRow = uvBase + (cy0 + cy) * w + cx0 * 2
+                val uRow = uOff + cy * cw
+                val vRow = vOff + cy * cw
+                for (cx in 0 until cw) {
+                    val uByte = roiI420Bytes[uRow + cx]
+                    val vByte = roiI420Bytes[vRow + cx]
+                    val idx = dstRow + cx * 2
+                    if (encoderUFirst) {
+                        packed[idx] = uByte
+                        packed[idx + 1] = vByte
+                    } else {
+                        packed[idx] = vByte
+                        packed[idx + 1] = uByte
+                    }
                 }
             }
         }
@@ -1628,8 +1799,16 @@ object VideoProcessor {
             return (uBuf.get(1).toInt() and 0xFF) == 200
         }
 
-        /** 手写逐像素版本（planar 用）。先把整帧读进本地数组，再在数组上换算。 */
-        private fun bgrToYuvSlow(src: Mat, image: Image, scratch: ByteArray, w: Int, h: Int) {
+        /** 手写逐像素版本（planar 或降级用）。先原样复制 [origImage] 平面，仅转换写回 [evenRoi]。 */
+        private fun bgrToYuvSlow(
+            src: Mat,
+            image: Image,
+            scratch: ByteArray,
+            w: Int,
+            h: Int,
+            evenRoi: CvRect? = null,
+            origImage: Image? = null,
+        ) {
             val planes = image.planes
             val yPlane = planes[0]
             val uPlane = planes[1]
@@ -1639,17 +1818,56 @@ object VideoProcessor {
             fillPlane(uPlane.buffer, 128)
             fillPlane(vPlane.buffer, 128)
 
-            src.get(0, 0, scratch)
+            if (origImage != null) {
+                val origPlanes = origImage.planes
+                copyPlane(origPlanes[0], yPlane, w, h)
+                copyPlane(origPlanes[1], uPlane, w / 2, h / 2)
+                copyPlane(origPlanes[2], vPlane, w / 2, h / 2)
+                if (evenRoi == null || evenRoi.width < 2 || evenRoi.height < 2) return
 
+                val x0 = evenRoi.x
+                val y0 = evenRoi.y
+                val rw = evenRoi.width
+                val rh = evenRoi.height
+                var roiBytes: ByteArray
+                val roiSub = src.submat(evenRoi)
+                val roiCopy = roiSub.clone()
+                try {
+                    roiBytes = ByteArray(rw * rh * 3)
+                    roiCopy.get(0, 0, roiBytes)
+                } finally {
+                    roiCopy.release()
+                    roiSub.release()
+                }
+                writeBgrBytesToYuvPlanes(roiBytes, x0, y0, rw, rh, yPlane, uPlane, vPlane)
+                return
+            }
+
+            src.get(0, 0, scratch)
+            writeBgrBytesToYuvPlanes(scratch, 0, 0, w, h, yPlane, uPlane, vPlane)
+        }
+
+        private fun writeBgrBytesToYuvPlanes(
+            bgr: ByteArray,
+            x0: Int,
+            y0: Int,
+            rw: Int,
+            rh: Int,
+            yPlane: Image.Plane,
+            uPlane: Image.Plane,
+            vPlane: Image.Plane,
+        ) {
             var p = 0
-            for (y in 0 until h) {
+            for (ry in 0 until rh) {
+                val y = y0 + ry
                 val yBase = y * yPlane.rowStride
                 val uBase = (y shr 1) * uPlane.rowStride
                 val vBase = (y shr 1) * vPlane.rowStride
-                for (x in 0 until w) {
-                    val b = scratch[p].toInt() and 0xFF
-                    val g = scratch[p + 1].toInt() and 0xFF
-                    val r = scratch[p + 2].toInt() and 0xFF
+                for (rx in 0 until rw) {
+                    val x = x0 + rx
+                    val b = bgr[p].toInt() and 0xFF
+                    val g = bgr[p + 1].toInt() and 0xFF
+                    val r = bgr[p + 2].toInt() and 0xFF
                     p += 3
 
                     val yv = (((66 * r + 129 * g + 25 * b + 128) shr 8) + 16).coerceIn(0, 255)
@@ -1662,6 +1880,32 @@ object VideoProcessor {
                         uPlane.buffer.put(uBase + ci * uPlane.pixelStride, uv.toByte())
                         vPlane.buffer.put(vBase + ci * vPlane.pixelStride, vv.toByte())
                     }
+                }
+            }
+        }
+
+        private fun copyPlane(srcPlane: Image.Plane, dstPlane: Image.Plane, pw: Int, ph: Int) {
+            val srcBuf = srcPlane.buffer
+            val dstBuf = dstPlane.buffer
+            val srcRow = srcPlane.rowStride
+            val dstRow = dstPlane.rowStride
+            val srcPix = srcPlane.pixelStride
+            val dstPix = dstPlane.pixelStride
+            if (srcPix == 1 && dstPix == 1) {
+                val rowBuf = ByteArray(pw)
+                for (y in 0 until ph) {
+                    srcBuf.position(y * srcRow)
+                    srcBuf.get(rowBuf, 0, pw)
+                    dstBuf.position(y * dstRow)
+                    dstBuf.put(rowBuf, 0, pw)
+                }
+                return
+            }
+            for (y in 0 until ph) {
+                val sOff = y * srcRow
+                val dOff = y * dstRow
+                for (x in 0 until pw) {
+                    dstBuf.put(dOff + x * dstPix, srcBuf.get(sOff + x * srcPix))
                 }
             }
         }

@@ -71,13 +71,14 @@ abstract interface class AppCacheStore {
 }
 
 /// 应用自己写在临时目录里的文件前缀。清单来自各链路实际生成的名字：
-///   * 图片：`in_<task>.png` / `mask_<task>.png` / `out_<task>.png`
+///   * 图片：`in_<task>.png` / `raw_<task>.jpg` / `mask_<task>.png` / `out_<task>.(png|jpg)`
 ///   * 视频：`poster_<ts>.png` / `fixed_<ts>.mp4` / `result_<ts>.png` / `sample_video.mp4`
 ///
 /// ⚠ 新增任何写进临时目录的文件，**必须把前缀加到这里**，否则它永远清不掉
 /// （「清理缓存」只认白名单）。`result_` 是结果页对比用的「修复后首帧」。
 const List<String> _ownPrefixes = <String>[
   'in_',
+  'raw_',
   'mask_',
   'out_',
   'poster_',

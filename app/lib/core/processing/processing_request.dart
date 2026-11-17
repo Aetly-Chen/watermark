@@ -32,6 +32,7 @@ class ProcessingRequest {
     this.outputQuality = OutputQuality.standard,
     this.refineMask = false,
     this.radius,
+    this.exifSourcePath,
   });
 
   final String taskId;
@@ -67,6 +68,9 @@ class ProcessingRequest {
   /// top-hat / 笔画宽度 / 连通域长宽比这类文字特征，或者直接上 LaMa。
   final bool refineMask;
 
+  /// 原始 JPEG 文件路径（非空时，原生侧输出 JPEG 并复制拍摄时间、GPS 等 EXIF 元数据）。
+  final String? exifSourcePath;
+
   Map<String, Object?> toChannelMap() => <String, Object?>{
     'taskId': taskId,
     'inputPath': inputPath,
@@ -75,5 +79,6 @@ class ProcessingRequest {
     'radius': inpaintRadius,
     'method': 'telea',
     'refine': refineMask,
+    if (exifSourcePath != null) 'exifSourcePath': exifSourcePath,
   };
 }

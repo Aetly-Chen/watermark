@@ -99,6 +99,43 @@ void main() {
     debugPrint('ITEST_SAVED uri=$uri');
 
     expect(uri, startsWith('content://media/'), reason: '应当返回 MediaStore URI');
+
+    // 第三段：验证 JPEG + EXIF 输出与框外像素保护
+    final jpgResult = await LocalBasicImageProcessor().process(
+      ProcessingRequest(
+        taskId: '${taskId}_jpg',
+        inputPath: prepared.inputPath,
+        outputPath: '${dir.path}/out_${taskId}_jpg.jpg',
+        mediaKind: MediaKind.image,
+        plan: MaskPlan.fixed(maskPath: prepared.maskPath),
+        exifSourcePath: prepared.exifSourcePath,
+      ),
+    );
+    final jpgFile = File(jpgResult.outputPath);
+    expect(jpgFile.existsSync(), isTrue, reason: 'JPEG 输出必须落盘');
+    final jpgBytes = await jpgFile.readAsBytes();
+    expect(
+      jpgBytes.length >= 3 &&
+          jpgBytes[0] == 0xFF &&
+          jpgBytes[1] == 0xD8 &&
+          jpgBytes[2] == 0xFF,
+      isTrue,
+      reason: '输出文件头必须是合法 JPEG (FF D8 FF)',
+    );
+    final afterJpg = await _decode(jpgBytes);
+    expect(afterJpg.width, before.width);
+    expect(afterJpg.height, before.height);
+    // 框外左上角像素与输入图差异在 JPEG 98 质量容差内（单通道差 <= 4）
+    expect((before.rgba[0] - afterJpg.rgba[0]).abs(), lessThanOrEqualTo(4));
+    expect((before.rgba[1] - afterJpg.rgba[1]).abs(), lessThanOrEqualTo(4));
+    expect((before.rgba[2] - afterJpg.rgba[2]).abs(), lessThanOrEqualTo(4));
+
+    final jpgUri = await const GallerySaver().save(
+      sourcePath: jpgResult.outputPath,
+      displayName: 'itest_cafe.jpg',
+    );
+    debugPrint('ITEST_SAVED_JPG uri=$jpgUri');
+    expect(jpgUri, startsWith('content://media/'), reason: 'JPEG 保存应当返回 MediaStore URI');
   });
 
   testWidgets('大框 + 框内细分：Mask 收窄了，水印仍被修掉（但背景涂抹没解决）', (tester) async {

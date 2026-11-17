@@ -326,8 +326,8 @@ class MediaBridge(
         val maskPath = call.argument<String>("maskPath")
         val outputPath = call.argument<String>("outputPath")
         val radius = call.argument<Int>("radius") ?: 6
-        // 默认开：框内细分能把「框大了就糊一片」压回只修水印笔画
-        val refine = call.argument<Boolean>("refine") ?: true
+        val refine = call.argument<Boolean>("refine") ?: false
+        val exifSourcePath = call.argument<String>("exifSourcePath")
 
         if (inputPath == null || maskPath == null || outputPath == null) {
             result.error(ERR_UNSUPPORTED, "缺少 inputPath / maskPath / outputPath", null)
@@ -353,7 +353,14 @@ class MediaBridge(
                     return@execute
                 }
 
-                val out = ImageProcessor.inpaint(inputPath, maskPath, outputPath, radius, refine)
+                val out = ImageProcessor.inpaint(
+                    inputPath = inputPath,
+                    maskPath = maskPath,
+                    outputPath = outputPath,
+                    radius = radius,
+                    refine = refine,
+                    exifSourcePath = exifSourcePath,
+                )
                 mainHandler.post { replyOnce { result.success(out) } }
             } catch (e: ImageProcessor.InvalidMaskException) {
                 mainHandler.post { replyOnce { result.error(ERR_INVALID_MASK, e.message, null) } }

@@ -12,6 +12,7 @@ void main() {
   ProcessingRequest request({
     int? radius,
     OutputQuality quality = OutputQuality.standard,
+    String? exifSourcePath,
   }) => ProcessingRequest(
     taskId: 't',
     inputPath: '/in.png',
@@ -20,6 +21,7 @@ void main() {
     plan: MaskPlan.fixed(maskPath: '/mask.png'),
     outputQuality: quality,
     radius: radius,
+    exifSourcePath: exifSourcePath,
   );
 
   test('不传半径：按质量档位推导（标准 6 / 高清 8）', () {
@@ -40,5 +42,11 @@ void main() {
     final map = request(radius: 11).toChannelMap();
     expect(map['radius'], 11);
     expect(map.containsKey('radius'), isTrue);
+    expect(map.containsKey('exifSourcePath'), isFalse);
+  });
+
+  test('传入 exifSourcePath 时随通道一起下发给原生', () {
+    final map = request(exifSourcePath: '/tmp/raw_1.jpg').toChannelMap();
+    expect(map['exifSourcePath'], '/tmp/raw_1.jpg');
   });
 }
