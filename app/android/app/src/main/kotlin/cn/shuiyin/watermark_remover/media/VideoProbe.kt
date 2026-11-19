@@ -115,15 +115,8 @@ object VideoProbe {
             val wantPortrait = rotation == 90 || rotation == 270
             val isPortrait = bitmap.height > bitmap.width
 
-            // 判据只有一条：**该竖却是横的，就自己转**。
-            //
-            // 早先写的是 `wantSwapped != gotSwapped`，其中 gotSwapped = width > height，
-            // 意思是「已经是横的」。两个都是 true 时反而不转 —— 正好把唯一该转的情况漏掉。
-            // 这条分支以前从没在真机上跑过（素材全是 rotation=0），所以一直没暴露。
-            //
-            // 反过来「已经是竖的」也不能再转一次：有些机型的 retriever 已经替我们转好了，
-            // 再转就是歪 90°。所以只认「该竖却横」这一种情况。
-            var upright: Bitmap = if (wantPortrait && !isPortrait) {
+            // 判据：该竖却横时转 90/270；倒拍（rotation=180）在未自动摆正的解码器上也需旋转 180°
+            var upright: Bitmap = if ((wantPortrait && !isPortrait) || rotation == 180) {
                 val matrix = Matrix().apply { postRotate(rotation.toFloat()) }
                 Bitmap.createBitmap(bitmap, 0, 0, bitmap.width, bitmap.height, matrix, true)
                     .also { if (it !== bitmap) bitmap.recycle() }

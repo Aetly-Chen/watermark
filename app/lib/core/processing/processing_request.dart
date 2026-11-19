@@ -77,7 +77,7 @@ class ProcessingRequest {
     'maskPath': plan.staticMaskPath,
     'outputPath': outputPath,
     'radius': inpaintRadius,
-    'method': 'telea',
+    'method': 'auto',
     'refine': refineMask,
     if (exifSourcePath != null) 'exifSourcePath': exifSourcePath,
   };

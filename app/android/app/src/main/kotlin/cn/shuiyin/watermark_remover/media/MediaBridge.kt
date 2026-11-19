@@ -222,12 +222,12 @@ class MediaBridge(
         val top = call.argument<Double>("top")
         val right = call.argument<Double>("right")
         val bottom = call.argument<Double>("bottom")
-        val radius = call.argument<Int>("radius") ?: 4
+        val radius = call.argument<Int>("radius") ?: 6
         // 默认关闭：静态水印用一张 Mask 就够；开了追踪反而可能把框带偏
-        // （手上没有真水印素材，追得准不准无法用肉眼验证）
         val trackMotion = call.argument<Boolean>("trackMotion") ?: false
         // 有涂抹时 Dart 会额外给一张遮罩 PNG（显示方向、与封面帧同尺寸）
         val maskPath = call.argument<String>("maskPath")
+        val method = call.argument<String>("method") ?: "auto"
         val taskId = call.argument<String>("taskId") ?: "video-${System.nanoTime()}"
 
         if (inputPath == null || outputPath == null ||
@@ -257,6 +257,8 @@ class MediaBridge(
                     maskPath = maskPath,
                     radius = radius,
                     trackMotion = trackMotion,
+                    context = context,
+                    method = method,
                     onProgress = { phase, done, total ->
                         mainHandler.post {
                             channel.invokeMethod(
@@ -328,6 +330,7 @@ class MediaBridge(
         val radius = call.argument<Int>("radius") ?: 6
         val refine = call.argument<Boolean>("refine") ?: false
         val exifSourcePath = call.argument<String>("exifSourcePath")
+        val method = call.argument<String>("method") ?: "auto"
 
         if (inputPath == null || maskPath == null || outputPath == null) {
             result.error(ERR_UNSUPPORTED, "缺少 inputPath / maskPath / outputPath", null)
@@ -360,6 +363,8 @@ class MediaBridge(
                     radius = radius,
                     refine = refine,
                     exifSourcePath = exifSourcePath,
+                    context = context,
+                    method = method,
                 )
                 mainHandler.post { replyOnce { result.success(out) } }
             } catch (e: ImageProcessor.InvalidMaskException) {

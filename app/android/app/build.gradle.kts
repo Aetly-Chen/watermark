@@ -57,7 +57,7 @@ android {
     // `--target-platform android-arm64 android-arm`。
     packaging {
         jniLibs {
-            excludes += listOf("lib/x86_64/**", "lib/armeabi-v7a/**")
+            excludes += listOf("lib/x86/**", "lib/x86_64/**", "lib/armeabi-v7a/**")
         }
     }
 
@@ -97,6 +97,8 @@ dependencies {
     // OpenCV 官方 Maven 包（4.9 起发布，含各 ABI 的 .so，无需手动拷 jniLibs）
     // 用 4.x 而不是 5.0：Imgproc.inpaint 的 API 在 4.x 上稳定，5.x 是新的主版本
     implementation("org.opencv:opencv:4.14.0")
+    // 本地端侧 AI 推理运行时（用于运行 MIT 许可的 MI-GAN 去水印模型）
+    implementation("com.microsoft.onnxruntime:onnxruntime-android:1.19.2")
 }
 
 flutter {

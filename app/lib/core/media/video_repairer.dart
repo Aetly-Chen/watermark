@@ -58,6 +58,8 @@ class VideoRepairResult {
     this.keyframeSwitches = 0,
     this.motionInliers = 0,
     this.maskRatio = 0,
+    this.engine = '',
+    this.audioSkipped = false,
   });
 
   factory VideoRepairResult.fromChannelMap(Map<String, Object?> map) {
@@ -87,6 +89,8 @@ class VideoRepairResult {
       keyframeSwitches: (map['keyframeSwitches'] as num?)?.toInt() ?? 0,
       motionInliers: (map['motionInliers'] as num?)?.toInt() ?? 0,
       maskRatio: (map['maskRatio'] as num?)?.toDouble() ?? 0,
+      engine: map['engine'] as String? ?? '',
+      audioSkipped: map['audioSkipped'] as bool? ?? false,
     );
   }
 
@@ -102,6 +106,12 @@ class VideoRepairResult {
   final int maskPixels;
   final int sizeBytes;
   final Duration elapsed;
+
+  /// 实际使用的修复引擎标识（`migan` / `telea`），旧结果或 mock 默认为空字符串。
+  final String engine;
+
+  /// 源视频音轨因容器格式不兼容而被安全跳过时为 true。
+  final bool audioSkipped;
 
   /// 选区占画面的比例（0~1）。
   ///

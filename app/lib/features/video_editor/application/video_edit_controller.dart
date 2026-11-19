@@ -399,7 +399,7 @@ class VideoEditController extends _$VideoEditController {
   ///
   /// 用 `mutations` 之外的手动赋值（这里没有用 AsyncNotifier），所以要在 finally 里
   /// 保证 processing 一定归位 —— 否则页面会永远卡在「修复中」。
-  Future<void> startRepair({int radius = 4}) async {
+  Future<void> startRepair({int radius = 6}) async {
     final draft = state.draft;
     final videoPath = state.videoPath;
     if (!draft.hasMask || videoPath == null || state.processing) return;

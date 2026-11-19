@@ -71,14 +71,27 @@ Android 原生 + Flutter 实现：框选或涂抹水印区域，用 OpenCV 的 i
 **从 [Releases](https://github.com/Aetly-Chen/watermark/releases/latest) 页面下载**，选最新的 `.apk` 装到手机上即可。
 
 ```
-watermark-remover-v0.2.9-arm64.apk    51 MB
-SHA-256  45a69cc9f4ce513d3c528c1f36359c4094ff254db96594afd0b2b0ceeac3b719
+watermark-remover-v0.3.0-arm64.apk    91.3 MB
+SHA-256  150ffc184e7de3c45114587fabc989b38078a0b8cfcd66e3a1dc7a227d725942
 ```
 
-> 安装包**不放进 git 仓库**（单包 51 MB，进版本控制会把这个仓库撑到几百 MB，
+> 安装包**不放进 git 仓库**（单包约 91 MB，进版本控制会把这个仓库撑到几百 MB，
 > 每改一版就多一份副本）。仓库里只有源码，二进制走 Releases。
 > `dist/` 是本地构建产物的落地目录，已被 `.gitignore` 忽略 —— 你自己构建时产物仍在
 > 那个位置，只是不会污染提交。
+
+**v0.3.0 变更**
+
+- **图片去水印升级为 MI-GAN 端侧 AI 引擎（告别马赛克）**：
+  - 集成开源 **MI-GAN**（ICCV 2023，MIT 许可，`migan_pipeline_v2.onnx` 约 26.8 MB）与 `onnxruntime-android 1.19.2`，全程设备离线推理，无网络上传；按连通域分簇在局部上下文窗口独立推理，关闭 CPU Arena 内存池控峰，严格限制只将膨胀掩膜与窄羽化带回贴，选区外像素及原图 Alpha 通道 100% 保持原样。
+  - 若模型不可用或推理异常，自动安全降级至纯净 OpenCV TELEA（移除会产生涂抹斑与噪点的粗金字塔融合与随机颗粒注入）。
+- **视频去水印链路全面重筑 & AI 逐帧修复**：
+  - 新增 `CodecHelper` 实现多编解码器（硬件优先、系统软件兜底）自适应与 HDR 色彩标签过滤，支持 `getInputImage` 失效时无缝切换候选编码器。
+  - 修复 8 处导致「视频链路失败」的隐患：`packDecodeUv` 尾行跨平面补齐防止 720p/1080p 越界崩溃；`dequeueEncoderInputWithDrain` 阻塞等输入期间持续排空输出防死锁；引入 `origYuvValid` 杜绝慢路径解码拷出绿屏；`crop-*` 可见画幅与奇数尺寸向下取偶适配；单调非负 PTS 钳位；`queueInputBuffer` stride/slice-height 容量对齐；音轨容错跳过不兼容编码（如 Opus/AC3）而不炸毁视频轨；任务失败或取消自动清理半成品文件；`VideoProbe` 补全 `rotation=180` 封面旋转校正。
+  - 视频帧接入 MI-GAN AI 推理 + 水印外围参考环复用（`ringMae` 亮度差自适应校准）与轻度时序 EMA（`0.78/0.22`）抑制闪烁，选区外维持原始 YUV 零转换直通与音频透传。
+- **华为 JER-AN10 真机全链路实测**：
+  - 图片（1200×896 `cafe.jpg` + JPEG EXIF + 大框细分）：`engine=migan` 全部通过，选区外与重编码基准无损一致，水印文字彻底清除无鬼影。
+  - 视频（960×540 / 150 帧 `sample.mp4` & 竖拍旋转 `motion_rot90.mp4`）：`engine=migan` 150 帧零跳帧完成（`inside_changed=82.0%`，框外 `outside_mae=3.17`，时长 `5056 ms` 与音轨 `161,792 B` 原样保留）；旋转视频红块残留 `0.0%`（20000→0 px，耗时 `5399 ms`）。
 
 **v0.2.9 变更**
 
