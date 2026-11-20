@@ -182,12 +182,67 @@ void main() {
 
     await closeDialog(tester);
   });
+
+  testWidgets('竖屏高视频在 360×800 视口下纹理高度突破 55% 上限，且全部控件落在面板内无溢出', (
+    tester,
+  ) async {
+    await tester.binding.setSurfaceSize(const Size(360, 800));
+    addTearDown(() => tester.binding.setSurfaceSize(null));
+
+    final previewer = _FakePreviewer(width: 540, height: 960);
+    await pumpDialog(tester, previewer: previewer);
+    // 等对话框入场动画落位后再量几何尺寸（不能用 pumpAndSettle，内部有 periodic timer）
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(tester.takeException(), isNull, reason: '竖屏高视频弹窗不应产生任何布局溢出异常');
+
+    final stage = tester.getRect(
+      find.byKey(const ValueKey('preview-texture')),
+    );
+    final panel = tester.getRect(
+      find.byKey(const ValueKey('preview-panel')),
+    );
+
+    expect(
+      stage.width / stage.height,
+      closeTo(540 / 960, 0.02),
+      reason: '竖屏视频画面必须保持 9:16 比例',
+    );
+    expect(
+      stage.height,
+      greaterThan(800 * 0.55 + 80),
+      reason: '竖屏高视频纹理高度必须明显突破旧版 55%（440dp）上限',
+    );
+
+    for (final key in const [
+      'preview-close',
+      'preview-texture',
+      'preview-toggle',
+      'preview-seek',
+    ]) {
+      final rect = tester.getRect(find.byKey(ValueKey(key)));
+      expect(
+        panel.contains(rect.topLeft) && panel.contains(rect.bottomRight),
+        isTrue,
+        reason: '「$key」被挤出预览面板边界',
+      );
+    }
+
+    await closeDialog(tester);
+    expect(previewer.closed, isTrue);
+  });
 }
 
 class _FakePreviewer implements VideoPreviewer {
-  _FakePreviewer({this.fail = false});
+  _FakePreviewer({
+    this.fail = false,
+    this.width = 960,
+    this.height = 540,
+  });
 
   final bool fail;
+  final int width;
+  final int height;
   String? openedPath;
   bool closed = false;
   int pauses = 0;
@@ -198,11 +253,11 @@ class _FakePreviewer implements VideoPreviewer {
     if (fail) {
       throw const VideoPreviewException('preview_failed', 'decode init failed');
     }
-    return const VideoPreviewHandle(
+    return VideoPreviewHandle(
       textureId: 7,
-      width: 960,
-      height: 540,
-      duration: Duration(seconds: 5),
+      width: width,
+      height: height,
+      duration: const Duration(seconds: 5),
     );
   }
 

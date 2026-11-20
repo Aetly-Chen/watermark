@@ -6,8 +6,10 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:watermark_remover/core/media/video_probe.dart';
 import 'package:watermark_remover/core/media/video_repairer.dart';
 import 'package:watermark_remover/core/theme/app_theme.dart';
+import 'package:watermark_remover/core/widgets/before_after_view.dart';
 import 'package:watermark_remover/core/widgets/mask_tool_chip.dart';
 import 'package:watermark_remover/features/image_editor/domain/mask_draft.dart';
+import 'package:watermark_remover/features/image_editor/presentation/widgets/selection_canvas.dart';
 import 'package:watermark_remover/features/video_editor/application/video_edit_controller.dart';
 import 'package:watermark_remover/features/video_editor/presentation/video_editor_page.dart';
 
@@ -940,16 +942,113 @@ void main() {
       reason: '一帧都没跟上还显示得跟成功一样，就是在骗人',
     );
   });
+
+  testWidgets('结果态收起编辑工具栏让对比画布获得充分高度，点「调整选区」调用 backToSelection 回到编辑态', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1080, 2400);
+    tester.view.devicePixelRatio = 3;
+    addTearDown(tester.view.reset);
+
+    final initial = VideoEditState(
+      videoPath: meta.path,
+      meta: meta,
+      poster: posterBytes,
+      posterSize: const Size(960, 540),
+      selection: const Rect.fromLTRB(0.4, 0.35, 0.58, 0.52),
+      tool: MaskTool.brush,
+      result: const VideoRepairResult(
+        outputPath: '/tmp/fixed.mp4',
+        width: 960,
+        height: 540,
+        rotation: 0,
+        frames: 150,
+        skippedFrames: 0,
+        videoBytes: 1397148,
+        audioBytes: 161792,
+        hasAudio: true,
+        maskPixels: 15824,
+        sizeBytes: 1562172,
+        elapsed: Duration(milliseconds: 5000),
+      ),
+      resultFrame: posterBytes,
+      resultFrameSize: const Size(960, 540),
+    );
+    final fake = _FakeController(initial);
+
+    await pumpPage(tester, initial, controller: fake);
+
+    // 结果态必须收起所有选区工具与开关，只留对比画布、摘要与操作按钮
+    for (final label in const ['矩形', '涂抹', '橡皮', '撤销', '清除']) {
+      expect(find.text(label), findsNothing, reason: '结果态不应展示工具 chip「$label」');
+    }
+    expect(find.byType(MaskToolChip), findsNothing);
+    expect(find.byType(Slider), findsNothing);
+    expect(find.byType(Switch), findsNothing, reason: '结果态不应展示静止/跟随开关');
+    expect(find.text('水印静止'), findsNothing);
+    expect(find.text('跟随画面'), findsNothing);
+    expect(find.text('重置选区'), findsNothing);
+
+    final compareRect = tester.getRect(find.byType(BeforeAfterSwitch));
+    final scaffoldHeight = tester.getRect(find.byType(Scaffold)).height;
+    final compareAreaHeight = compareRect.height;
+    expect(
+      compareAreaHeight,
+      greaterThan(450),
+      reason: '收起编辑工具栏后，对比画布在 360×800 下应获得充裕高度',
+    );
+    expect(compareAreaHeight, greaterThan(scaffoldHeight * 0.55));
+
+    // 点击底部「调整选区」，应调用 backToSelection() 并退回封面帧选区编辑态
+    expect(find.text('调整选区'), findsOneWidget);
+    expect(tapOf(tester, '调整选区'), isNotNull);
+    await tester.tap(find.text('调整选区'));
+    await tester.pumpAndSettle();
+
+    expect(fake.backToSelectionCalls, 1, reason: '点击「调整选区」必须调用 backToSelection()');
+    expect(find.byKey(const ValueKey('compare-split')), findsNothing);
+    expect(find.text('调整选区'), findsNothing);
+    expect(find.text('封面帧 · 框选水印位置'), findsOneWidget);
+    expect(find.byType(MaskToolChip), findsNWidgets(5));
+    expect(find.byType(Switch), findsOneWidget);
+    expect(find.text('开始修复'), findsOneWidget);
+    expect(find.text('重置选区'), findsOneWidget);
+    // 原选区草稿必须保留
+    expect(find.text('已框选 173 × 92'), findsOneWidget);
+
+    // 与退回后的选区编辑态对比：收起工具栏确实明显释放了画布高度
+    final selectionCanvasHeight =
+        tester.getRect(find.byType(SelectionCanvas)).height;
+    expect(
+      compareAreaHeight,
+      greaterThan(selectionCanvasHeight),
+      reason: '结果态对比画布应高于带工具栏与开关的选区画布',
+    );
+  });
+
+  testWidgets('保存中：底部「调整选区」与「重新修复」一并禁用', (tester) async {
+    await pumpPage(tester, resultState(saving: true));
+
+    expect(tapOf(tester, '调整选区'), isNull);
+    expect(tapOf(tester, '重新修复'), isNull);
+  });
 }
 
-/// 只用来把状态灌进页面。所有业务方法都继承自真控制器，但测试里不会被调用。
+/// 只用来把状态灌进页面。多数业务方法继承自真控制器，并记录关键调用供断言。
 class _FakeController extends VideoEditController {
   _FakeController(this._initial);
 
   final VideoEditState _initial;
+  int backToSelectionCalls = 0;
 
   @override
   VideoEditState build() => _initial;
+
+  @override
+  void backToSelection() {
+    backToSelectionCalls++;
+    super.backToSelection();
+  }
 
   /// 换一份状态，模拟「同一页面上又修完一件作品」。
   void swap(VideoEditState next) => state = next;

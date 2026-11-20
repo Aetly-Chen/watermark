@@ -24,6 +24,9 @@ class AppTokens extends ThemeExtension<AppTokens> {
     required this.media,
     required this.danger,
     required this.onFlame,
+    required this.track,
+    required this.surfaceElevated,
+    required this.hoverTint,
   });
 
   /// 浅色：奶油白 + 炭黑 + 焦橙
@@ -41,8 +44,12 @@ class AppTokens extends ThemeExtension<AppTokens> {
     media: Color(0xFF2A2620),
     danger: Color(0xFFA3301F),
     onFlame: Color(0xFFFFFDF8),
+    track: Color(0xFFEAE2D3),
+    surfaceElevated: Color(0xFFFFFDF8),
+    hoverTint: Color(0x1AC4551B),
   );
 
+  /// 深色：暗墨 + 柔米白 + 琥珀焰
   factory AppTokens.dark() => const AppTokens(
     cream: Color(0xFF14120E),
     paper: Color(0xFF1D1A14),
@@ -57,6 +64,9 @@ class AppTokens extends ThemeExtension<AppTokens> {
     media: Color(0xFF0B0A08),
     danger: Color(0xFFE0705C),
     onFlame: Color(0xFF14120E),
+    track: Color(0xFF1A1712),
+    surfaceElevated: Color(0xFF2E2820),
+    hoverTint: Color(0x26E2762F),
   );
 
   /// 页面底色
@@ -96,6 +106,15 @@ class AppTokens extends ThemeExtension<AppTokens> {
   /// 压在 flame 上的文字/图标颜色
   final Color onFlame;
 
+  /// 分段控件凹槽与次级容器底色
+  final Color track;
+
+  /// 浮起态表面与次级分段选中滑块底色
+  final Color surfaceElevated;
+
+  /// 全局与按钮悬停、聚焦、按压高亮的暖调遮罩
+  final Color hoverTint;
+
   // ── 圆角与间距：定值，不参与主题插值 ──
   static const double radiusCard = 16;
   static const double radiusButton = 12;
@@ -127,6 +146,9 @@ class AppTokens extends ThemeExtension<AppTokens> {
     Color? media,
     Color? danger,
     Color? onFlame,
+    Color? track,
+    Color? surfaceElevated,
+    Color? hoverTint,
   }) {
     return AppTokens(
       cream: cream ?? this.cream,
@@ -142,6 +164,9 @@ class AppTokens extends ThemeExtension<AppTokens> {
       media: media ?? this.media,
       danger: danger ?? this.danger,
       onFlame: onFlame ?? this.onFlame,
+      track: track ?? this.track,
+      surfaceElevated: surfaceElevated ?? this.surfaceElevated,
+      hoverTint: hoverTint ?? this.hoverTint,
     );
   }
 
@@ -162,6 +187,9 @@ class AppTokens extends ThemeExtension<AppTokens> {
       media: Color.lerp(media, other.media, t)!,
       danger: Color.lerp(danger, other.danger, t)!,
       onFlame: Color.lerp(onFlame, other.onFlame, t)!,
+      track: Color.lerp(track, other.track, t)!,
+      surfaceElevated: Color.lerp(surfaceElevated, other.surfaceElevated, t)!,
+      hoverTint: Color.lerp(hoverTint, other.hoverTint, t)!,
     );
   }
 }

@@ -262,18 +262,30 @@ class _SelectionCanvasState extends State<SelectionCanvas> {
                   _activePoints == null &&
                   (area.height - imageRect.bottom) >= 26)
                 Positioned(
-                  left: 0,
-                  right: 0,
-                  bottom: 14,
+                  left: 12,
+                  right: 12,
+                  bottom: 8,
                   child: IgnorePointer(
-                    child: Text(
-                      widget.tool == MaskTool.rect
-                          ? '拖一个框罩住水印，也可以拉四个角改大小'
-                          : '用手指在水印上涂抹，涂到的地方才会被修',
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        fontSize: 12,
-                        color: t.cream.withValues(alpha: 0.7),
+                    child: Center(
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 12,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.black.withValues(alpha: 0.56),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Text(
+                          widget.tool == MaskTool.rect
+                              ? '框选水印 · 可拉角调整'
+                              : '涂抹水印区域',
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            fontSize: 11.5,
+                            color: Colors.white,
+                          ),
+                        ),
                       ),
                     ),
                   ),

@@ -33,27 +33,57 @@ class AppShell extends StatelessWidget {
         ),
         child: SafeArea(
           top: false,
-          child: NavigationBar(
-            height: 62,
-            selectedIndex: navigationShell.currentIndex,
-            onDestinationSelected: (index) => navigationShell.goBranch(
-              index,
-              // 重复点当前 Tab → 回到该分支的初始页（iOS/微信 的通行行为）
-              initialLocation: index == navigationShell.currentIndex,
+          child: NavigationBarTheme(
+            data: NavigationBarThemeData(
+              height: 60,
+              backgroundColor: Colors.transparent,
+              surfaceTintColor: Colors.transparent,
+              elevation: 0,
+              indicatorColor: t.flameSoft,
+              overlayColor: WidgetStateProperty.resolveWith((states) {
+                if (states.contains(WidgetState.pressed)) {
+                  return t.flame.withValues(alpha: 0.14);
+                }
+                if (states.contains(WidgetState.hovered) ||
+                    states.contains(WidgetState.focused)) {
+                  return t.hoverTint;
+                }
+                return null;
+              }),
+              labelTextStyle: WidgetStateProperty.resolveWith((states) {
+                final selected = states.contains(WidgetState.selected);
+                return TextStyle(
+                  fontSize: 11.5,
+                  fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                  color: selected ? t.flameTxt : t.ink3,
+                );
+              }),
+              iconTheme: WidgetStateProperty.resolveWith((states) {
+                final selected = states.contains(WidgetState.selected);
+                return IconThemeData(
+                  size: 22,
+                  color: selected ? t.flameTxt : t.ink3,
+                );
+              }),
             ),
-            backgroundColor: Colors.transparent,
-            surfaceTintColor: Colors.transparent,
-            indicatorColor: t.flameSoft,
-            elevation: 0,
-            labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
-            destinations: [
-              for (var i = 0; i < _tabs.length; i++)
-                NavigationDestination(
-                  icon: Icon(_tabs[i].icon, color: t.ink3),
-                  selectedIcon: Icon(_tabs[i].activeIcon, color: t.flameTxt),
-                  label: _tabs[i].label,
-                ),
-            ],
+            child: NavigationBar(
+              height: 60,
+              selectedIndex: navigationShell.currentIndex,
+              onDestinationSelected: (index) => navigationShell.goBranch(
+                index,
+                // 重复点当前 Tab → 回到该分支的初始页（iOS/微信 的通行行为）
+                initialLocation: index == navigationShell.currentIndex,
+              ),
+              labelBehavior: NavigationDestinationLabelBehavior.alwaysShow,
+              destinations: [
+                for (var i = 0; i < _tabs.length; i++)
+                  NavigationDestination(
+                    icon: Icon(_tabs[i].icon, color: t.ink3),
+                    selectedIcon: Icon(_tabs[i].activeIcon, color: t.flameTxt),
+                    label: _tabs[i].label,
+                  ),
+              ],
+            ),
           ),
         ),
       ),

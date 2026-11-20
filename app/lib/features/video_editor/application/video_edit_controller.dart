@@ -388,6 +388,18 @@ class VideoEditController extends _$VideoEditController {
     state = state.copyWith(clearSelection: true, clearError: true, clearResult: true);
   }
 
+  /// 从结果态退回选区态。
+  ///
+  /// 清理修复结果、错误与保存状态，同时保留原视频、封面帧与当前选区草稿，
+  /// 方便用户直接在原草稿上微调后重新修复。
+  void backToSelection() {
+    state = state.copyWith(
+      clearResult: true,
+      clearError: true,
+      clearSave: true,
+    );
+  }
+
   /// 「静止 / 跟随」开关。转码中不允许改 —— 改的是下一次修复的行为，
   /// 让它在转码中可点只会让人以为改了当前这次。
   void setTrackMotion(bool value) {

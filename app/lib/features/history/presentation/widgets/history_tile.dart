@@ -27,7 +27,7 @@ class HistoryTile extends StatelessWidget {
           SizedBox(
             width: 56,
             height: 56,
-            child: HistoryThumb(item: item),
+            child: HistoryThumb(item: item, radius: 10),
           ),
           const SizedBox(width: 12),
           Expanded(
@@ -40,16 +40,17 @@ class HistoryTile extends StatelessWidget {
                   overflow: TextOverflow.ellipsis,
                   style: TextStyle(
                     fontSize: 14.5,
+                    height: 1.25,
                     fontWeight: FontWeight.w600,
                     color: t.ink,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 5),
                 Row(
                   children: [
                     Text(
                       isVideo ? '视频修复' : '图片修复',
-                      style: TextStyle(fontSize: 12, color: t.ink3),
+                      style: TextStyle(fontSize: 12, color: t.ink2),
                     ),
                     const SizedBox(width: 6),
                     _StatusTag(label: item.status.label, highlight: ok),
@@ -59,7 +60,11 @@ class HistoryTile extends StatelessWidget {
                         item.timeLabelAt(DateTime.now()),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        style: TextStyle(fontSize: 12, color: t.ink3),
+                        style: TextStyle(
+                          fontSize: 12,
+                          color: t.ink3,
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
                       ),
                     ),
                   ],
@@ -67,11 +72,18 @@ class HistoryTile extends StatelessWidget {
                 const SizedBox(height: 4),
                 Text(
                   item.metaLabel,
-                  style: TextStyle(fontSize: 11.5, color: t.ink3),
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    fontSize: 11.5,
+                    color: t.ink3,
+                    fontFeatures: const [FontFeature.tabularFigures()],
+                  ),
                 ),
               ],
             ),
           ),
+          const SizedBox(width: 8),
           Icon(Icons.chevron_right_rounded, color: t.ink3, size: 20),
         ],
       ),
@@ -91,16 +103,19 @@ class _StatusTag extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 7, vertical: 2),
       decoration: BoxDecoration(
-        color: highlight ? t.flameSoft : t.line2,
+        color: highlight ? t.flameSoft : t.track,
         borderRadius: BorderRadius.circular(6),
+        border: Border.all(
+          color: highlight ? t.flame.withValues(alpha: 0.20) : t.line,
+        ),
       ),
       child: Text(
         label,
         style: TextStyle(
           fontSize: 11,
-          height: 1.4,
+          height: 1.25,
           fontWeight: FontWeight.w600,
-          color: highlight ? t.flameTxt : t.ink3,
+          color: highlight ? t.flameTxt : t.ink2,
         ),
       ),
     );

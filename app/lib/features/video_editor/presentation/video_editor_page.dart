@@ -28,15 +28,15 @@ class VideoEditorPage extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final t = AppTokens.of(context);
-    final textTheme = Theme.of(context).textTheme;
     final state = ref.watch(videoEditControllerProvider);
     final controller = ref.read(videoEditControllerProvider.notifier);
+    final isResult = state.result != null && !state.processing;
 
     return Scaffold(
       appBar: AppBar(
         title: const Text('视频去水印'),
         actions: [
-          if (state.hasVideo)
+          if (state.hasVideo && !isResult)
             TextButton(
               onPressed: state.busy || state.processing ? null : controller.reset,
               style: TextButton.styleFrom(foregroundColor: t.flameTxt),
@@ -59,10 +59,70 @@ class VideoEditorPage extends ConsumerWidget {
 
         // ── 下方面板 ──
         controls: Padding(
-            padding: EdgeInsets.fromLTRB(16, 12, 16, state.hasVideo ? 10 : 12),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
+          padding: EdgeInsets.fromLTRB(
+            16,
+            10,
+            16,
+            isResult ? 8 : (state.hasVideo ? 8 : 12),
+          ),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.stretch,
+            children: [
+              if (isResult) ...[
+                if (state.error != null) ...[
+                  _ErrorBanner(message: state.error!),
+                  const SizedBox(height: 8),
+                ],
+                _ResultCard(result: state.result!),
+                if (state.result!.maskRatioTooBig) ...[
+                  const SizedBox(height: 8),
+                  // 大洞不是参数能修的：TELEA 在 24.9% 画面的矩形洞上只会填出一块 X 形灰斑
+                  // （实测）。与其让用户以为「修坏了」，不如当场说清原因和出路。
+                  _Hint(
+                    text:
+                        '选区占画面 ${(state.result!.maskRatio * 100).round()}%，只框住水印效果更自然',
+                  ),
+                ],
+                if (state.saveError != null) ...[
+                  const SizedBox(height: 8),
+                  _ErrorBanner(message: state.saveError!),
+                ],
+                const SizedBox(height: 8),
+                // 两件事并列：先看整段效果，再决定存不存。
+                // 「预览」只放一帧对比是看不出来的 —— 跟随模式下会不会抖、
+                // 有没有跳帧，必须播一遍。
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        label: '预览效果',
+                        icon: Icons.play_circle_outline_rounded,
+                        variant: AppButtonVariant.secondary,
+                        onPressed: () => VideoPreviewDialog.show(
+                          context,
+                          state.result!.outputPath,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      // 结果只在临时目录里，没有这一步等于「修了拿不出来」
+                      child: AppButton(
+                        label: state.savedUri != null
+                            ? '已保存到相册'
+                            : (state.saving ? '正在保存…' : '保存到相册'),
+                        icon: state.savedUri != null
+                            ? Icons.check_rounded
+                            : Icons.download_rounded,
+                        variant: AppButtonVariant.secondary,
+                        onPressed: state.canSave
+                            ? controller.saveToGallery
+                            : null,
+                      ),
+                    ),
+                  ],
+                ),
+              ] else ...[
                 if (state.meta != null) ...[
                   Wrap(
                     spacing: 16,
@@ -85,68 +145,15 @@ class VideoEditorPage extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                 ],
                 if (state.error != null) ...[
                   _ErrorBanner(message: state.error!),
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                 ],
                 if (state.processing) ...[
                   _Progress(state: state),
-                  const SizedBox(height: 10),
-                ],
-                if (state.result != null && !state.processing) ...[
-                  _ResultCard(result: state.result!),
                   const SizedBox(height: 8),
-                  // 两件事并列：先看整段效果，再决定存不存。
-                  // 「预览」只放一帧对比是看不出来的 —— 跟随模式下会不会抖、
-                  // 有没有跳帧，必须播一遍。
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AppButton(
-                          label: '预览效果',
-                          icon: Icons.play_circle_outline_rounded,
-                          variant: AppButtonVariant.secondary,
-                          onPressed: () => VideoPreviewDialog.show(
-                            context,
-                            state.result!.outputPath,
-                          ),
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        // 结果只在临时目录里，没有这一步等于「修了拿不出来」
-                        child: AppButton(
-                          label: state.savedUri != null
-                              ? '已保存到相册'
-                              : (state.saving ? '正在保存…' : '保存到相册'),
-                          icon: state.savedUri != null
-                              ? Icons.check_rounded
-                              : Icons.download_rounded,
-                          variant: AppButtonVariant.secondary,
-                          onPressed: state.canSave
-                              ? controller.saveToGallery
-                              : null,
-                        ),
-                      ),
-                    ],
-                  ),
-                  if (state.result!.maskRatioTooBig) ...[
-                    const SizedBox(height: 6),
-                    // 大洞不是参数能修的：TELEA 在 24.9% 画面的矩形洞上只会填出一块 X 形灰斑
-                    // （实测）。与其让用户以为「修坏了」，不如当场说清原因和出路。
-                    _Hint(
-                      text: '选区占画面 '
-                          '${(state.result!.maskRatio * 100).round()}%，'
-                          '这块只能填成一片平滑色块；想更自然，请只框住水印本身再修一次',
-                    ),
-                  ],
-                  if (state.saveError != null) ...[
-                    const SizedBox(height: 6),
-                    _Hint(text: state.saveError!),
-                  ],
-                  const SizedBox(height: 10),
                 ],
                 if (state.hasMask && state.meta != null) ...[
                   _Hint(text: maskLabel(state)),
@@ -157,9 +164,8 @@ class VideoEditorPage extends ConsumerWidget {
                   if (_maskTooBig(state)) ...[
                     const SizedBox(height: 6),
                     _Hint(
-                      text: '选区占画面 ${_maskPercent(state)}%，'
-                          '这么大的范围只能填成一片平滑色块；'
-                          '贴着水印涂（或把框缩小）会自然得多',
+                      text:
+                          '选区占画面 ${_maskPercent(state)}%，贴着水印涂效果更自然',
                     ),
                   ],
                   const SizedBox(height: 8),
@@ -215,24 +221,22 @@ class VideoEditorPage extends ConsumerWidget {
                     ],
                   ),
                   if (state.tool != MaskTool.rect) ...[
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 4),
                     _BrushSlider(
                       value: state.brushSize,
                       onChanged: state.processing ? null : controller.setBrushSize,
                     ),
                   ],
-                  const SizedBox(height: 10),
+                  const SizedBox(height: 8),
                 ],
-                if (state.hasVideo && !state.processing) ...[
+                if (state.hasVideo && !state.processing)
                   _MotionToggle(
                     trackMotion: state.trackMotion,
                     onChanged: controller.setTrackMotion,
                   ),
-                  const SizedBox(height: 10),
-                ],
                 // 主按钮不放在这里，交给 EditorCanvasLayout 的 pinned 槽：
                 // 横屏/分屏下控制面板会变成可滚动，主操作不该被滚出屏幕。
-                if (!state.hasVideo) ...[
+                if (!state.hasVideo)
                   Row(
                     children: [
                       Expanded(
@@ -252,37 +256,55 @@ class VideoEditorPage extends ConsumerWidget {
                       ),
                     ],
                   ),
-                  const SizedBox(height: 8),
-                  Text(
-                    '示例视频是内置的 1 MB 短片（MDN CC0），用来跑通探测与帧提取，不经过相册。',
-                    textAlign: TextAlign.center,
-                    style: textTheme.bodySmall,
-                  ),
-                ],
               ],
-            ),
+            ],
+          ),
         ),
 
         // 主操作固定在底部，不随控制面板滚动（横屏/分屏下尤其重要）
         pinned: state.hasVideo
             ? Padding(
                 padding: const EdgeInsets.fromLTRB(16, 0, 16, 12),
-                child: AppButton(
-                  label: state.processing
-                      ? '取消修复'
-                      : (state.result != null ? '重新修复' : '开始修复'),
-                  icon: state.processing
-                      ? Icons.stop_rounded
-                      : Icons.auto_fix_high_rounded,
-                  variant: state.processing
-                      ? AppButtonVariant.secondary
-                      : AppButtonVariant.primary,
-                  onPressed: !state.canRepair && !state.processing
-                      ? null
-                      : (state.processing
-                            ? controller.cancelRepair
-                            : controller.startRepair),
-                ),
+                child: isResult
+                    ? Row(
+                        children: [
+                          Expanded(
+                            flex: 2,
+                            child: AppButton(
+                              label: '调整选区',
+                              variant: AppButtonVariant.secondary,
+                              onPressed: state.saving
+                                  ? null
+                                  : controller.backToSelection,
+                            ),
+                          ),
+                          const SizedBox(width: 10),
+                          Expanded(
+                            flex: 3,
+                            child: AppButton(
+                              label: '重新修复',
+                              icon: Icons.auto_fix_high_rounded,
+                              onPressed: state.canRepair && !state.saving
+                                  ? controller.startRepair
+                                  : null,
+                            ),
+                          ),
+                        ],
+                      )
+                    : AppButton(
+                        label: state.processing ? '取消修复' : '开始修复',
+                        icon: state.processing
+                            ? Icons.stop_rounded
+                            : Icons.auto_fix_high_rounded,
+                        variant: state.processing
+                            ? AppButtonVariant.secondary
+                            : AppButtonVariant.primary,
+                        onPressed: !state.canRepair && !state.processing
+                            ? null
+                            : (state.processing
+                                  ? controller.cancelRepair
+                                  : controller.startRepair),
+                      ),
               )
             : null,
       ),
@@ -310,27 +332,22 @@ class _MotionToggle extends StatelessWidget {
     final textTheme = Theme.of(context).textTheme;
 
     return AppCard(
-      padding: const EdgeInsets.fromLTRB(16, 12, 8, 12),
+      padding: const EdgeInsets.fromLTRB(12, 6, 8, 6),
       child: Row(
         children: [
-          Icon(Icons.moving_rounded, size: 20, color: t.flameTxt),
-          const SizedBox(width: 10),
+          Icon(Icons.moving_rounded, size: 18, color: t.flameTxt),
+          const SizedBox(width: 8),
+          Text(
+            trackMotion ? '跟随画面' : '水印静止',
+            style: textTheme.titleSmall?.copyWith(fontSize: 13.5),
+          ),
+          const SizedBox(width: 8),
           Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  trackMotion ? '跟随画面' : '水印静止',
-                  style: textTheme.titleSmall,
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  trackMotion
-                      ? '镜头动，选框跟着走。画面本身在变形时会跟不准'
-                      : '选框固定不动。水印会动的话会被漏掉',
-                  style: textTheme.bodySmall,
-                ),
-              ],
+            child: Text(
+              trackMotion ? '随镜头追踪' : '固定选框',
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: textTheme.bodySmall,
             ),
           ),
           Switch(value: trackMotion, onChanged: onChanged),
@@ -348,8 +365,6 @@ class _CanvasArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppTokens.of(context);
-
     if (!state.hasVideo) {
       return Center(
         child: Column(
@@ -358,12 +373,15 @@ class _CanvasArea extends StatelessWidget {
             Icon(
               Icons.videocam_outlined,
               size: 40,
-              color: t.cream.withValues(alpha: 0.4),
+              color: Colors.white.withValues(alpha: 0.45),
             ),
             const SizedBox(height: 10),
             Text(
               state.busy ? '正在读取视频…' : '还没有选视频',
-              style: TextStyle(fontSize: 13, color: t.cream.withValues(alpha: 0.55)),
+              style: TextStyle(
+                fontSize: 13,
+                color: Colors.white.withValues(alpha: 0.65),
+              ),
             ),
           ],
         ),
@@ -380,6 +398,7 @@ class _CanvasArea extends StatelessWidget {
         // 停在哪一态。不换 key 的话，上一件作品的「修复后」会被带到下一件上 ——
         // 新结果默认必须是「对比」，否则并排看不出差别这件事就白做了。
         key: ValueKey('compare-${state.result!.outputPath}'),
+        title: '视频首帧对比',
         before: Image.memory(
           state.poster!,
           fit: BoxFit.contain,
@@ -425,14 +444,14 @@ class _CanvasArea extends StatelessWidget {
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
               decoration: BoxDecoration(
-                color: t.media.withValues(alpha: 0.7),
-                borderRadius: BorderRadius.circular(6),
+                color: Colors.black.withValues(alpha: 0.56),
+                borderRadius: BorderRadius.circular(999),
               ),
-              child: Text(
+              child: const Text(
                 '封面帧 · 框选水印位置',
                 style: TextStyle(
                   fontSize: 11,
-                  color: t.cream.withValues(alpha: 0.85),
+                  color: Colors.white,
                 ),
               ),
             ),
@@ -522,7 +541,6 @@ class _Progress extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppTokens.of(context);
     final motion = state.motionFraction;
     final repair = state.progressFraction;
     // 第一趟报完真帧数之后，修复那一趟的分母就不是估计值了，可以不写「约」
@@ -557,13 +575,6 @@ class _Progress extends StatelessWidget {
             fraction: repair,
             trailing: repair == null ? '等待' : '${(repair * 100).round()}%',
             done: false,
-          ),
-          const SizedBox(height: 6),
-          Text(
-            state.trackMotion
-                ? '跟随已开启：水印会按画面运动移动。'
-                : '镜头静止假设：封面帧上框的位置会套到每一帧。',
-            style: TextStyle(fontSize: 11, color: t.ink3),
           ),
         ],
       ),
@@ -647,6 +658,11 @@ class _ResultCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
+    final timingText =
+        '耗时 ${(result.elapsed.inMilliseconds / 1000).toStringAsFixed(1)}s '
+        '(${result.framesPerSecond.toStringAsFixed(1)} fps)'
+        '${result.skippedFrames > 0 ? ' · 跳过 ${result.skippedFrames} 帧' : ''}';
+
     return AppCard(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
       child: Column(
@@ -664,20 +680,24 @@ class _ResultCard extends StatelessWidget {
                   color: t.ink,
                 ),
               ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: FittedBox(
+                  fit: BoxFit.scaleDown,
+                  alignment: Alignment.centerRight,
+                  child: Text(
+                    timingText,
+                    style: TextStyle(fontSize: 11, color: t.ink3),
+                  ),
+                ),
+              ),
             ],
           ),
-          const SizedBox(height: 6),
+          const SizedBox(height: 5),
           Text(
             '${result.width} × ${result.height} · ${result.frames} 帧 · '
             '${result.sizeLabel} · 音轨${result.hasAudio ? '保留' : '无'}',
             style: TextStyle(fontSize: 11.5, color: t.ink2),
-          ),
-          const SizedBox(height: 3),
-          Text(
-            '耗时 ${(result.elapsed.inMilliseconds / 1000).toStringAsFixed(1)}s '
-            '(${result.framesPerSecond.toStringAsFixed(1)} fps)'
-            '${result.skippedFrames > 0 ? ' · 跳过 ${result.skippedFrames} 帧' : ''}',
-            style: TextStyle(fontSize: 11, color: t.ink3),
           ),
           // 开了「跟随画面」却看不到任何数字，用户没法判断它到底跟没跟上。
           // 原生一直在算，Dart 也解析进结果里了，只是从来没显示过。
@@ -788,28 +808,41 @@ class _BrushSlider extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
-    return Row(
-      children: [
-        Text('笔宽', style: TextStyle(fontSize: 11.5, color: t.ink3)),
-        Expanded(
-          child: Slider(
-            value: value.clamp(8, 60),
-            min: 8,
-            max: 60,
-            divisions: 26,
-            label: '${value.round()}',
-            onChanged: onChanged,
-          ),
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: SliderTheme(
+        data: SliderTheme.of(context).copyWith(
+          trackHeight: 3,
+          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+          overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
         ),
-        SizedBox(
-          width: 34,
-          child: Text(
-            '${value.round()}',
-            textAlign: TextAlign.right,
-            style: TextStyle(fontSize: 11.5, color: t.ink3),
-          ),
+        child: Row(
+          children: [
+            Text('笔宽', style: TextStyle(fontSize: 11.5, color: t.ink3)),
+            Expanded(
+              child: Slider(
+                value: value.clamp(8, 60),
+                min: 8,
+                max: 60,
+                divisions: 26,
+                label: '${value.round()}',
+                onChanged: onChanged,
+              ),
+            ),
+            SizedBox(
+              width: 34,
+              child: Text(
+                '${value.round()}',
+                textAlign: TextAlign.right,
+                style: TextStyle(fontSize: 11.5, color: t.ink3),
+              ),
+            ),
+          ],
         ),
-      ],
+      ),
     );
   }
 }

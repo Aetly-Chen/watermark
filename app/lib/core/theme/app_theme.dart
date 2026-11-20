@@ -36,11 +36,26 @@ abstract final class AppTheme {
       error: t.danger,
     );
 
+    final warmOverlay = WidgetStateProperty.resolveWith<Color?>((states) {
+      if (states.contains(WidgetState.pressed)) {
+        return t.flame.withValues(alpha: 0.14);
+      }
+      if (states.contains(WidgetState.hovered) ||
+          states.contains(WidgetState.focused)) {
+        return t.hoverTint;
+      }
+      return null;
+    });
+
     return ThemeData(
       colorScheme: scheme,
       scaffoldBackgroundColor: t.cream,
       canvasColor: t.paper,
       dividerColor: t.line,
+      hoverColor: t.hoverTint,
+      focusColor: t.hoverTint,
+      highlightColor: t.flame.withValues(alpha: 0.08),
+      splashColor: t.flame.withValues(alpha: 0.12),
       // 视觉全部由令牌决定，关掉 Material 3 的 surface tint 渐变，避免卡片自己变色
       appBarTheme: AppBarTheme(
         backgroundColor: t.cream,
@@ -55,6 +70,60 @@ abstract final class AppTheme {
           color: t.ink,
           letterSpacing: 0.2,
         ),
+      ),
+      iconButtonTheme: IconButtonThemeData(
+        style: IconButton.styleFrom(
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ).copyWith(overlayColor: warmOverlay),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: t.flameTxt,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(10),
+          ),
+        ).copyWith(overlayColor: warmOverlay),
+      ),
+      switchTheme: SwitchThemeData(
+        thumbColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return t.onFlame;
+          return t.ink3;
+        }),
+        trackColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return t.flame;
+          return t.track;
+        }),
+        trackOutlineColor: WidgetStateProperty.resolveWith((states) {
+          if (states.contains(WidgetState.selected)) return Colors.transparent;
+          return t.line;
+        }),
+        overlayColor: warmOverlay,
+      ),
+      sliderTheme: SliderThemeData(
+        trackHeight: 3,
+        activeTrackColor: t.flame,
+        inactiveTrackColor: t.line,
+        thumbColor: t.flame,
+        overlayColor: t.hoverTint,
+        thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+        overlayShape: const RoundSliderOverlayShape(overlayRadius: 15),
+      ),
+      snackBarTheme: SnackBarThemeData(
+        behavior: SnackBarBehavior.floating,
+        backgroundColor: t.ink,
+        contentTextStyle: TextStyle(
+          fontSize: 13.5,
+          fontWeight: FontWeight.w500,
+          color: t.paper,
+        ),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: t.paper,
+        surfaceTintColor: Colors.transparent,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
       dividerTheme: DividerThemeData(color: t.line, thickness: 1, space: 1),
       textTheme: _textTheme(t),

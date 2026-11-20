@@ -23,30 +23,47 @@ class MaskToolChip extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-        decoration: BoxDecoration(
-          color: selected ? t.flameSoft : t.paper,
-          borderRadius: BorderRadius.circular(AppTokens.radiusButton),
-          border: Border.all(color: selected ? t.flame : t.line),
-        ),
-        child: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Icon(icon, size: 15, color: selected ? t.flameTxt : t.ink2),
-            const SizedBox(width: 6),
-            Text(
-              label,
-              style: TextStyle(
-                fontSize: 12.5,
-                fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-                color: selected ? t.flameTxt : t.ink2,
+    final radius = BorderRadius.circular(AppTokens.radiusButton);
+    final fg = selected ? t.flameTxt : t.ink2;
+
+    return Opacity(
+      opacity: onTap == null ? 0.42 : 1,
+      child: Material(
+        color: selected ? t.flameSoft : t.paper,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          hoverColor: t.hoverTint,
+          focusColor: t.hoverTint,
+          splashColor: t.flame.withValues(alpha: 0.14),
+          highlightColor: t.flame.withValues(alpha: 0.08),
+          child: Ink(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+            decoration: BoxDecoration(
+              borderRadius: radius,
+              border: Border.all(
+                color: selected ? t.flame : t.line,
+                width: selected ? 1.2 : 1,
               ),
             ),
-          ],
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(icon, size: 15, color: fg),
+                const SizedBox(width: 6),
+                Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 12.5,
+                    fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
+                    color: fg,
+                  ),
+                ),
+              ],
+            ),
+          ),
         ),
       ),
     );

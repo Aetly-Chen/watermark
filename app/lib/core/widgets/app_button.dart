@@ -22,7 +22,7 @@ class AppButton extends StatelessWidget {
     this.icon,
     this.variant = AppButtonVariant.primary,
     this.expand = true,
-    this.height = 52,
+    this.height = 48,
   });
 
   final String label;
@@ -43,6 +43,16 @@ class AppButton extends StatelessWidget {
       AppButtonVariant.secondary => (t.paper, t.ink, t.line),
       AppButtonVariant.ghost => (Colors.transparent, t.flameTxt, Colors.transparent),
     };
+    final isPrimary = variant == AppButtonVariant.primary;
+    final hoverColor = isPrimary
+        ? t.onFlame.withValues(alpha: 0.12)
+        : t.hoverTint;
+    final highlightColor = isPrimary
+        ? t.onFlame.withValues(alpha: 0.12)
+        : t.hoverTint;
+    final splashColor = isPrimary
+        ? t.onFlame.withValues(alpha: 0.18)
+        : t.hoverTint;
 
     final content = Row(
       mainAxisAlignment: MainAxisAlignment.center,
@@ -68,6 +78,10 @@ class AppButton extends StatelessWidget {
         child: InkWell(
           onTap: onPressed,
           borderRadius: radius,
+          hoverColor: hoverColor,
+          focusColor: hoverColor,
+          highlightColor: highlightColor,
+          splashColor: splashColor,
           child: Ink(
             height: height,
             decoration: BoxDecoration(

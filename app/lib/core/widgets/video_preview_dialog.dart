@@ -146,7 +146,7 @@ class _VideoPreviewDialogState extends ConsumerState<VideoPreviewDialog>
     final handle = _handle;
     return Dialog(
       backgroundColor: Colors.transparent,
-      insetPadding: const EdgeInsets.symmetric(horizontal: 12, vertical: 40),
+      insetPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 20),
       // 不要在这里用 Flexible/Expanded：Column 是 mainAxisSize.min，
       // 弹性子项在有界高度下会抢走空间，内容反而被挤没。
       // 高度交给 AspectRatio 按宽度算出来。
@@ -166,10 +166,10 @@ class _VideoPreviewDialogState extends ConsumerState<VideoPreviewDialog>
         child: LayoutBuilder(
           builder: (context, panel) {
             final avail = panel.maxHeight;
-            // 扣掉标题 / 控制条 / 说明这几块固定开销（实测约 150dp）。
+            // 扣掉标题与控制条这几块固定开销（实测约 116dp）。
             // 矮视口（横屏）必须扣，否则一定溢出：画面吃满对话框、控制条整块消失。
             final stageMaxH = avail.isFinite
-                ? math.max(72.0, math.min(avail * 0.55, avail - 150))
+                ? math.max(120.0, avail - 116)
                 : 220.0;
             final ratio = handle?.aspectRatio ?? 16 / 9;
             // 宽视口（横屏 / 平板）：控制条挪到画面右侧。
@@ -183,7 +183,7 @@ class _VideoPreviewDialogState extends ConsumerState<VideoPreviewDialog>
                 ? math.max(120.0, panel.maxWidth - sideWidth - 12)
                 : panel.maxWidth;
             var stageH = stageW / ratio;
-            // 宽视口只扣标题（约 64dp）；窄视口还要扣控制条和说明（约 150dp）
+            // 宽视口只扣标题（约 64dp）；窄视口还要扣标题与控制条（约 116dp）
             final heightBudget = wide
                 ? (avail.isFinite ? math.max(80.0, avail - 64) : 260.0)
                 : stageMaxH;
@@ -226,27 +226,12 @@ class _VideoPreviewDialogState extends ConsumerState<VideoPreviewDialog>
                         const SizedBox(width: 12),
                         SizedBox(
                           width: sideWidth,
-                          child: Column(
-                            mainAxisSize: MainAxisSize.min,
-                            crossAxisAlignment: CrossAxisAlignment.stretch,
-                            children: [
-                              _Controls(
-                                position: _position,
-                                duration: handle.duration,
-                                playing: _playing,
-                                onToggle: _togglePlay,
-                                onSeek: _seekTo,
-                              ),
-                              const SizedBox(height: 10),
-                              Text(
-                                '画面来自刚修好的文件，声音与进度都在。',
-                                textAlign: TextAlign.center,
-                                style: TextStyle(
-                                  fontSize: 10.5,
-                                  color: t.cream.withValues(alpha: 0.55),
-                                ),
-                              ),
-                            ],
+                          child: _Controls(
+                            position: _position,
+                            duration: handle.duration,
+                            playing: _playing,
+                            onToggle: _togglePlay,
+                            onSeek: _seekTo,
                           ),
                         ),
                       ],
@@ -296,15 +281,6 @@ class _VideoPreviewDialogState extends ConsumerState<VideoPreviewDialog>
                       onSeek: _seekTo,
                     ),
                   ],
-                  const SizedBox(height: 4),
-                  Text(
-                    '画面来自刚修好的文件，声音与进度都在。',
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 10.5,
-                      color: t.cream.withValues(alpha: 0.55),
-                    ),
-                  ),
                 ],
               ),
             );
@@ -503,7 +479,14 @@ class _Controls extends StatelessWidget {
           ),
           tooltip: playing ? '暂停' : '播放',
         ),
-        Text(_clock(pos), style: TextStyle(fontSize: 11, color: t.cream)),
+        Text(
+          _clock(pos),
+          style: TextStyle(
+            fontSize: 11,
+            color: t.cream,
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
+        ),
         Expanded(
           child: SliderTheme(
             data: SliderTheme.of(context).copyWith(
@@ -525,7 +508,11 @@ class _Controls extends StatelessWidget {
         ),
         Text(
           _clock(total),
-          style: TextStyle(fontSize: 11, color: t.cream.withValues(alpha: 0.7)),
+          style: TextStyle(
+            fontSize: 11,
+            color: t.cream.withValues(alpha: 0.7),
+            fontFeatures: const [FontFeature.tabularFigures()],
+          ),
         ),
         const SizedBox(width: 6),
       ],

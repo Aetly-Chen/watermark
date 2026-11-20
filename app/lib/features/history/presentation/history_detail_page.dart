@@ -49,11 +49,14 @@ class HistoryDetailPage extends ConsumerWidget {
                 ),
                 const SizedBox(height: 12),
                 AppCard(
+                  padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
                       Text(item.title, style: textTheme.titleMedium),
-                      const SizedBox(height: 8),
+                      const SizedBox(height: 10),
+                      Divider(height: 1, color: t.line2),
+                      const SizedBox(height: 6),
                       // 类型原来是 `item.kind.name`，中文界面里冒出英文 image/video
                       _Row(label: '类型', value: item.kind.label),
                       _Row(label: '状态', value: item.status.label),
@@ -64,15 +67,22 @@ class HistoryDetailPage extends ConsumerWidget {
                     ],
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 10),
                 // 说清楚这个页面的边界：历史只存元信息，不存素材。
                 // 不说这一句，用户点「再处理」会以为能拿回原来那张图。
-                Text(
-                  '历史只保留处理记录。成品已导出到手机相册，原素材不留副本 —— '
-                  '要再修一次需要重新选文件。',
-                  style: textTheme.bodySmall?.copyWith(height: 1.6),
+                Row(
+                  children: [
+                    Icon(Icons.info_outline_rounded, size: 14, color: t.ink3),
+                    const SizedBox(width: 6),
+                    Expanded(
+                      child: Text(
+                        '历史只保留处理记录，成品已存至相册。',
+                        style: textTheme.bodySmall,
+                      ),
+                    ),
+                  ],
                 ),
-                const SizedBox(height: 20),
+                const SizedBox(height: 16),
                 AppButton(
                   label: item.kind == HistoryKind.video
                       ? '再处理一个视频'
@@ -100,7 +110,7 @@ class _Row extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 5),
+      padding: const EdgeInsets.symmetric(vertical: 4.5),
       child: Row(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -111,7 +121,11 @@ class _Row extends StatelessWidget {
           Expanded(
             child: Text(
               value,
-              style: TextStyle(fontSize: 13, color: t.ink),
+              style: TextStyle(
+                fontSize: 13,
+                color: t.ink,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
             ),
           ),
         ],

@@ -22,10 +22,11 @@ class ProfilePage extends ConsumerWidget {
     final t = AppTokens.of(context);
     final textTheme = Theme.of(context).textTheme;
     final mode = ref.watch(themeModeControllerProvider);
+    final appInfo = ref.watch(appInfoProvider);
 
     return Scaffold(
       appBar: AppBar(
-        titleSpacing: 20,
+        titleSpacing: AppTokens.gutter,
         toolbarHeight: 64,
         title: Text('我的', style: textTheme.titleLarge),
       ),
@@ -56,26 +57,13 @@ class ProfilePage extends ConsumerWidget {
                     children: [
                       Text('本地工作台', style: textTheme.titleMedium),
                       const SizedBox(height: 3),
-                      Text(_summary(ref), style: textTheme.bodySmall),
+                      Text(
+                        _summary(ref),
+                        style: textTheme.bodySmall?.copyWith(
+                          fontFeatures: const [FontFeature.tabularFigures()],
+                        ),
+                      ),
                     ],
-                  ),
-                ),
-                Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 8,
-                    vertical: 4,
-                  ),
-                  decoration: BoxDecoration(
-                    color: t.flameSoft,
-                    borderRadius: BorderRadius.circular(6),
-                  ),
-                  child: Text(
-                    '已启用',
-                    style: TextStyle(
-                      fontSize: 11,
-                      fontWeight: FontWeight.w600,
-                      color: t.flameTxt,
-                    ),
                   ),
                 ),
               ],
@@ -84,23 +72,32 @@ class ProfilePage extends ConsumerWidget {
           const SizedBox(height: AppTokens.gapL),
 
           // ── 主题模式 ──
-          Text('主题模式', style: textTheme.bodyMedium),
+          Text(
+            '主题模式',
+            style: textTheme.bodyMedium?.copyWith(
+              fontWeight: FontWeight.w600,
+              color: t.ink,
+            ),
+          ),
           const SizedBox(height: 8),
           Container(
             padding: const EdgeInsets.all(4),
             decoration: BoxDecoration(
-              color: t.line2,
-              borderRadius: BorderRadius.circular(10),
+              color: t.track,
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: t.line),
             ),
             child: Row(
               children: [
-                for (final entry in <(ThemeMode, String)>[
-                  (ThemeMode.system, '跟随系统'),
-                  (ThemeMode.light, '浅色'),
-                  (ThemeMode.dark, '深色'),
+                for (final entry in <(ThemeMode, String, IconData)>[
+                  (ThemeMode.system, '跟随系统', Icons.brightness_auto_rounded),
+                  (ThemeMode.light, '浅色', Icons.light_mode_rounded),
+                  (ThemeMode.dark, '深色', Icons.dark_mode_rounded),
                 ])
                   Expanded(
                     child: _ModeTab(
+                      key: ValueKey('theme-mode-${entry.$1.name}'),
+                      icon: entry.$3,
                       label: entry.$2,
                       selected: mode == entry.$1,
                       onTap: () => ref
@@ -127,14 +124,14 @@ class ProfilePage extends ConsumerWidget {
                   trailing: _cacheLabel(ref.watch(cacheSnapshotProvider)),
                   onTap: () => _clearCache(context, ref),
                 ),
-                Divider(height: 1, color: t.line2, indent: 52),
+                Divider(height: 1, color: t.line2, indent: 58),
                 _SettingRow(
                   icon: Icons.info_outline_rounded,
                   title: '关于水印工坊',
                   // 版本来自 `package_info_plus`（源头是 pubspec 的 version:），
                   // 不再写死 —— 三处硬编码改版本时必漏。
-                  trailing: ref.watch(appInfoProvider).label,
-                  onTap: () => _showAbout(context, ref.read(appInfoProvider)),
+                  trailing: appInfo.label,
+                  onTap: () => _showAbout(context, appInfo),
                 ),
               ],
             ),
@@ -142,10 +139,9 @@ class ProfilePage extends ConsumerWidget {
 
           const SizedBox(height: AppTokens.gapL),
           Text(
-            '所有处理均在本机完成，素材不会上传。\n'
-            '水印工坊 ${ref.watch(appInfoProvider).label} · 本地优先',
+            '水印工坊 ${appInfo.label} · 本地优先',
             textAlign: TextAlign.center,
-            style: textTheme.bodySmall?.copyWith(height: 1.7),
+            style: textTheme.bodySmall,
           ),
         ],
       ),
@@ -207,8 +203,7 @@ class ProfilePage extends ConsumerWidget {
             ),
           ),
           content: Text(
-            '所有处理都在本机完成，素材不上传。\n\n'
-            '图片走 TELEA 修复；视频逐帧修复，音轨原样透传。'
+            '端侧离线处理，素材不会上传。'
             '${appInfo.buildNumber.isEmpty ? '' : '\n\n构建号 ${appInfo.buildLabel}'}',
             style: TextStyle(fontSize: 13, height: 1.6, color: t.ink2),
           ),
@@ -226,11 +221,14 @@ class ProfilePage extends ConsumerWidget {
 
 class _ModeTab extends StatelessWidget {
   const _ModeTab({
+    required this.icon,
     required this.label,
     required this.selected,
     required this.onTap,
+    super.key,
   });
 
+  final IconData icon;
   final String label;
   final bool selected;
   final VoidCallback onTap;
@@ -238,23 +236,63 @@ class _ModeTab extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
-    return GestureDetector(
-      onTap: onTap,
-      behavior: HitTestBehavior.opaque,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 150),
-        height: 34,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: selected ? t.paper : Colors.transparent,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: Text(
-          label,
-          style: TextStyle(
-            fontSize: 13,
-            fontWeight: selected ? FontWeight.w600 : FontWeight.w500,
-            color: selected ? t.ink : t.ink3,
+    final radius = BorderRadius.circular(9);
+    final fg = selected ? t.onFlame : t.ink2;
+
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 160),
+      curve: Curves.easeOutCubic,
+      height: 36,
+      decoration: BoxDecoration(
+        color: selected ? t.flame : Colors.transparent,
+        borderRadius: radius,
+        boxShadow: selected
+            ? [
+                BoxShadow(
+                  color: t.flame.withValues(alpha: 0.22),
+                  blurRadius: 8,
+                  offset: const Offset(0, 2),
+                ),
+              ]
+            : const [],
+      ),
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: radius,
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: radius,
+          hoverColor:
+              selected ? t.onFlame.withValues(alpha: 0.12) : t.hoverTint,
+          splashColor: selected
+              ? t.onFlame.withValues(alpha: 0.16)
+              : t.flame.withValues(alpha: 0.14),
+          highlightColor:
+              selected ? t.onFlame.withValues(alpha: 0.08) : t.hoverTint,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 6),
+            child: Center(
+              child: FittedBox(
+                fit: BoxFit.scaleDown,
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(icon, size: 15, color: fg),
+                    const SizedBox(width: 5),
+                    Text(
+                      label,
+                      style: TextStyle(
+                        fontSize: 13,
+                        fontWeight:
+                            selected ? FontWeight.w600 : FontWeight.w500,
+                        color: fg,
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
           ),
         ),
       ),
@@ -280,19 +318,40 @@ class _SettingRow extends StatelessWidget {
     final t = AppTokens.of(context);
     return InkWell(
       onTap: onTap,
+      hoverColor: t.hoverTint,
+      splashColor: t.flame.withValues(alpha: 0.10),
+      highlightColor: t.flame.withValues(alpha: 0.06),
       child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
         child: Row(
           children: [
-            Icon(icon, size: 18, color: t.ink2),
-            const SizedBox(width: 14),
+            Container(
+              width: 32,
+              height: 32,
+              decoration: BoxDecoration(
+                color: t.track,
+                borderRadius: BorderRadius.circular(8),
+              ),
+              child: Icon(icon, size: 17, color: t.ink2),
+            ),
+            const SizedBox(width: 12),
             Expanded(
               child: Text(
                 title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
                 style: TextStyle(fontSize: 14, color: t.ink),
               ),
             ),
-            Text(trailing, style: TextStyle(fontSize: 13, color: t.ink3)),
+            const SizedBox(width: 8),
+            Text(
+              trailing,
+              style: TextStyle(
+                fontSize: 13,
+                color: t.ink3,
+                fontFeatures: const [FontFeature.tabularFigures()],
+              ),
+            ),
             const SizedBox(width: 4),
             Icon(Icons.chevron_right_rounded, size: 18, color: t.ink3),
           ],

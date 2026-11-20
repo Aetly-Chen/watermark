@@ -26,22 +26,27 @@ class AppCard extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
     final radius = BorderRadius.circular(AppTokens.radiusCard);
+    final decoration = BoxDecoration(
+      borderRadius: radius,
+      border: Border.all(color: borderColor ?? t.line),
+    );
+    final inner = Padding(padding: padding, child: child);
 
     return Material(
       color: color ?? t.paper,
       borderRadius: radius,
       clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        onTap: onTap,
-        borderRadius: radius,
-        child: Ink(
-          decoration: BoxDecoration(
-            borderRadius: radius,
-            border: Border.all(color: borderColor ?? t.line),
-          ),
-          child: Padding(padding: padding, child: child),
-        ),
-      ),
+      child: onTap != null
+          ? InkWell(
+              onTap: onTap,
+              borderRadius: radius,
+              hoverColor: t.hoverTint,
+              focusColor: t.hoverTint,
+              splashColor: t.flame.withValues(alpha: 0.10),
+              highlightColor: t.flame.withValues(alpha: 0.06),
+              child: Ink(decoration: decoration, child: inner),
+            )
+          : DecoratedBox(decoration: decoration, child: inner),
     );
   }
 }

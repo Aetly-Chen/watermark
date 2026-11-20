@@ -51,133 +51,137 @@ class ImageEditorPage extends ConsumerWidget {
         ),
 
         // ── 下方面板 ──
-        controls: Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 0),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.stretch,
-              children: [
-                if (state.hasImage) ...[
-                  // 用 Wrap 而不是 Row + Spacer：320dp 的小屏上这条会横向溢出
-                  // （实测溢出 29px，真机上是黄黑条纹）。Spacer 要求两边都放得下，
-                  // 窄屏放不下就只能报溢出 —— 折行比裁掉字好。
-                  Wrap(
-                    spacing: 18,
-                    runSpacing: 6,
-                    crossAxisAlignment: WrapCrossAlignment.center,
-                    children: [
-                      _Meta(
-                        label: '原图',
-                        value: state.imageSize == null
-                            ? '—'
-                            : '${state.imageSize!.width.toInt()} × ${state.imageSize!.height.toInt()}',
-                      ),
-                      _Meta(label: '遮罩', value: maskLabel(state)),
-                      if (state.elapsed != null)
-                        Text(
-                          '耗时 ${state.elapsed!.inMilliseconds} ms',
-                          style: TextStyle(fontSize: 11.5, color: t.ink3),
+        controls: !state.hasImage
+            ? const SizedBox.shrink()
+            : Padding(
+                padding: EdgeInsets.fromLTRB(
+                  16,
+                  10,
+                  16,
+                  state.hasResult ? 10 : 8,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.stretch,
+                  children: [
+                    // 用 Wrap 而不是 Row + Spacer：320dp 的小屏上这条会横向溢出
+                    // （实测溢出 29px，真机上是黄黑条纹）。Spacer 要求两边都放得下，
+                    // 窄屏放不下就只能报溢出 —— 折行比裁掉字好。
+                    Wrap(
+                      spacing: 16,
+                      runSpacing: 4,
+                      crossAxisAlignment: WrapCrossAlignment.center,
+                      children: [
+                        _Meta(
+                          label: '原图',
+                          value: state.imageSize == null
+                              ? '—'
+                              : '${state.imageSize!.width.toInt()} × ${state.imageSize!.height.toInt()}',
                         ),
-                    ],
-                  ),
-                  if (_maskTooBig(state)) ...[
-                    const SizedBox(height: 8),
-                    _ErrorBanner(
-                      message: '选区占画面 ${_maskPercent(state)}%，'
-                          '这么大的范围只能填成一片平滑色块；'
-                          '贴着水印涂（或把框缩小）会自然得多',
-                      hint: true,
+                        _Meta(label: '遮罩', value: maskLabel(state)),
+                        if (state.elapsed != null)
+                          Text(
+                            '耗时 ${state.elapsed!.inMilliseconds} ms',
+                            style: TextStyle(fontSize: 11.5, color: t.ink3),
+                          ),
+                      ],
                     ),
-                  ],
-                  const SizedBox(height: 10),
-                  // 三个工具都是**真的能切**。之前只有一个「矩形选区」，
-                  // 而且它是个假按钮（onTap 给的空函数）—— 原型上明明是四个工具。
-                  // 同理：4 个 chip 在 320dp 上放不下（溢出 26px），折行
-                  Wrap(
-                    spacing: 8,
-                    runSpacing: 8,
-                    children: [
-                      MaskToolChip(
-                        icon: Icons.crop_free_rounded,
-                        label: '矩形',
-                        selected: state.tool == MaskTool.rect,
-                        onTap: state.busy
-                            ? null
-                            : () => controller.setTool(MaskTool.rect),
+                    // 结果态画布最大化：隐藏工具栏、滑块与选区预警，点「重新定位选区」可退回编辑态。
+                    if (!state.hasResult) ...[
+                      if (_maskTooBig(state)) ...[
+                        const SizedBox(height: 8),
+                        _ErrorBanner(
+                          message:
+                              '选区占画面 ${_maskPercent(state)}%，贴着水印涂效果更自然',
+                          hint: true,
+                        ),
+                      ],
+                      const SizedBox(height: 8),
+                      // 三个工具都是**真的能切**。之前只有一个「矩形选区」，
+                      // 而且它是个假按钮（onTap 给的空函数）—— 原型上明明是四个工具。
+                      // 同理：4 个 chip 在 320dp 上放不下（溢出 26px），折行
+                      Wrap(
+                        spacing: 8,
+                        runSpacing: 8,
+                        children: [
+                          MaskToolChip(
+                            icon: Icons.crop_free_rounded,
+                            label: '矩形',
+                            selected: state.tool == MaskTool.rect,
+                            onTap: state.busy
+                                ? null
+                                : () => controller.setTool(MaskTool.rect),
+                          ),
+                          MaskToolChip(
+                            icon: Icons.brush_outlined,
+                            label: '涂抹',
+                            selected: state.tool == MaskTool.brush,
+                            onTap: state.busy
+                                ? null
+                                : () => controller.setTool(MaskTool.brush),
+                          ),
+                          MaskToolChip(
+                            icon: Icons.auto_fix_normal_outlined,
+                            label: '橡皮',
+                            selected: state.tool == MaskTool.eraser,
+                            onTap: state.busy
+                                ? null
+                                : () => controller.setTool(MaskTool.eraser),
+                          ),
+                          // 撤销放在「清除」左边：用户想回去时第一个看到的是「退一步」，
+                          // 而不是「全清」—— 全清是不可撤销的粗动作，不该是最顺手的那个。
+                          MaskToolChip(
+                            icon: Icons.undo_rounded,
+                            label: '撤销',
+                            selected: false,
+                            onTap: state.busy || !state.canUndo
+                                ? null
+                                : controller.undo,
+                          ),
+                          MaskToolChip(
+                            icon: Icons.backspace_outlined,
+                            label: '清除',
+                            selected: false,
+                            onTap: state.busy || state.draft.isEmpty
+                                ? null
+                                : controller.clearDraft,
+                          ),
+                        ],
                       ),
-                      MaskToolChip(
-                        icon: Icons.brush_outlined,
-                        label: '涂抹',
-                        selected: state.tool == MaskTool.brush,
-                        onTap: state.busy
-                            ? null
-                            : () => controller.setTool(MaskTool.brush),
-                      ),
-                      MaskToolChip(
-                        icon: Icons.auto_fix_normal_outlined,
-                        label: '橡皮',
-                        selected: state.tool == MaskTool.eraser,
-                        onTap: state.busy
-                            ? null
-                            : () => controller.setTool(MaskTool.eraser),
-                      ),
-                      // 撤销放在「清除」左边：用户想回去时第一个看到的是「退一步」，
-                      // 而不是「全清」—— 全清是不可撤销的粗动作，不该是最顺手的那个。
-                      MaskToolChip(
-                        icon: Icons.undo_rounded,
-                        label: '撤销',
-                        selected: false,
-                        onTap: state.busy || !state.canUndo
-                            ? null
-                            : controller.undo,
-                      ),
-                      MaskToolChip(
-                        icon: Icons.backspace_outlined,
-                        label: '清除',
-                        selected: false,
-                        onTap: state.busy || state.draft.isEmpty
-                            ? null
-                            : controller.clearDraft,
+                      // 画笔大小只在涂抹/橡皮下出现：矩形不需要它，
+                      // 一直摆在那儿会让人以为「框的大小」也能调。
+                      if (state.tool != MaskTool.rect) ...[
+                        const SizedBox(height: 4),
+                        _SliderRow(
+                          label: '笔宽',
+                          valueLabel: '${state.brushSize.round()}',
+                          value: state.brushSize,
+                          min: 8,
+                          max: 60,
+                          divisions: 26,
+                          onChanged: state.busy ? null : controller.setBrushSize,
+                        ),
+                      ],
+                      // 修复强度：这个参数在引擎里一直都有（Telea 的邻域半径），
+                      // 但界面上从来没有入口 —— 原型上却有，而且用户确实需要它：
+                      // 水印压在细纹理上时要小一点，压在纯色背景上大一点更干净。
+                      const SizedBox(height: 2),
+                      _SliderRow(
+                        label: '修复强度',
+                        valueLabel: '${state.radius} px',
+                        value: state.radius.toDouble(),
+                        min: 2,
+                        max: 16,
+                        divisions: 14,
+                        onChanged: state.busy ? null : controller.setRadius,
                       ),
                     ],
-                  ),
-                  // 画笔大小只在涂抹/橡皮下出现：矩形不需要它，
-                  // 一直摆在那儿会让人以为「框的大小」也能调。
-                  if (state.tool != MaskTool.rect) ...[
-                    const SizedBox(height: 4),
-                    _SliderRow(
-                      label: '笔宽',
-                      valueLabel: '${state.brushSize.round()}',
-                      value: state.brushSize,
-                      min: 8,
-                      max: 60,
-                      divisions: 26,
-                      onChanged: state.busy ? null : controller.setBrushSize,
-                    ),
+                    if (state.error != null) ...[
+                      const SizedBox(height: 8),
+                      _ErrorBanner(message: state.error!),
+                    ],
                   ],
-                  // 修复强度：这个参数在引擎里一直都有（Telea 的邻域半径），
-                  // 但界面上从来没有入口 —— 原型上却有，而且用户确实需要它：
-                  // 水印压在细纹理上时要小一点，压在纯色背景上大一点更干净。
-                  const SizedBox(height: 2),
-                  _SliderRow(
-                    label: '修复强度',
-                    valueLabel: '${state.radius} px',
-                    value: state.radius.toDouble(),
-                    min: 2,
-                    max: 16,
-                    divisions: 14,
-                    onChanged: state.busy
-                        ? null
-                        : (v) => controller.setRadius(v),
-                  ),
-                  if (state.error != null) ...[
-                    const SizedBox(height: 10),
-                    _ErrorBanner(message: state.error!),
-                  ],
-                  const SizedBox(height: 12),
-                ],
-              ],
-            ),
-        ),
+                ),
+              ),
 
         // 主操作固定在底部：横屏 / 分屏下控制面板会变成可滚动，
         // 按钮跟着滚走的话，转屏后第一眼找不到操作入口。
@@ -187,82 +191,74 @@ class ImageEditorPage extends ConsumerWidget {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             mainAxisSize: MainAxisSize.min,
             children: [
-                if (state.hasResult) ...[
-                  if (state.saveError != null) ...[
-                    _ErrorBanner(message: state.saveError!),
-                    const SizedBox(height: 10),
-                  ],
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AppButton(
-                          label: '重新定位选区',
-                          variant: AppButtonVariant.secondary,
-                          onPressed: state.saving
-                              ? null
-                              : controller.backToSelection,
-                        ),
+              if (state.hasResult) ...[
+                if (state.saveError != null) ...[
+                  _ErrorBanner(message: state.saveError!),
+                  const SizedBox(height: 8),
+                ],
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        label: '重新定位选区',
+                        variant: AppButtonVariant.secondary,
+                        onPressed: state.saving
+                            ? null
+                            : controller.backToSelection,
                       ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: AppButton(
-                          label: state.savedUri != null
-                              ? '已存入相册'
-                              : state.saving
-                              ? '保存中…'
-                              : '保存到相册',
-                          icon: state.savedUri == null
-                              ? Icons.download_rounded
-                              : Icons.check_rounded,
-                          onPressed: state.canSave
-                              ? controller.saveToGallery
-                              : null,
-                        ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AppButton(
+                        label: state.savedUri != null
+                            ? '已存入相册'
+                            : state.saving
+                            ? '保存中…'
+                            : '保存到相册',
+                        icon: state.savedUri == null
+                            ? Icons.download_rounded
+                            : Icons.check_rounded,
+                        onPressed: state.canSave
+                            ? controller.saveToGallery
+                            : null,
                       ),
-                    ],
-                  ),
-                  if (state.savedUri != null) ...[
-                    const SizedBox(height: 8),
-                    Text(
-                      '已保存到「相册 / Pictures / 水印工坊」',
-                      textAlign: TextAlign.center,
-                      style: textTheme.bodySmall,
                     ),
                   ],
-                ] else if (state.hasImage)
-                  AppButton(
-                    label: state.busy ? '修复中…' : '开始修复',
-                    icon: state.busy ? null : Icons.auto_fix_high_rounded,
-                    onPressed: state.canRun ? controller.run : null,
-                  )
-                else
-                  Row(
-                    children: [
-                      Expanded(
-                        child: AppButton(
-                          label: '从相册选择',
-                          variant: AppButtonVariant.secondary,
-                          icon: Icons.photo_library_outlined,
-                          onPressed: controller.pickFromGallery,
-                        ),
-                      ),
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: AppButton(
-                          label: '用示例图',
-                          onPressed: controller.loadSample,
-                        ),
-                      ),
-                    ],
-                  ),
-                if (!state.hasImage) ...[
-                  const SizedBox(height: 8),
+                ),
+                if (state.savedUri != null) ...[
+                  const SizedBox(height: 6),
                   Text(
-                    '示例图是内置的咖啡馆照片，用来快速试链路，不经过相册。',
+                    '已存至 Pictures / 水印工坊',
                     textAlign: TextAlign.center,
                     style: textTheme.bodySmall,
                   ),
                 ],
+              ] else if (state.hasImage)
+                AppButton(
+                  label: state.busy ? '修复中…' : '开始修复',
+                  icon: state.busy ? null : Icons.auto_fix_high_rounded,
+                  onPressed: state.canRun ? controller.run : null,
+                )
+              else
+                Row(
+                  children: [
+                    Expanded(
+                      child: AppButton(
+                        label: '从相册选择',
+                        variant: AppButtonVariant.secondary,
+                        icon: Icons.photo_library_outlined,
+                        onPressed: controller.pickFromGallery,
+                      ),
+                    ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: AppButton(
+                        label: '用示例图',
+                        onPressed: controller.loadSample,
+                      ),
+                    ),
+                  ],
+                ),
             ],
           ),
         ),
@@ -279,8 +275,6 @@ class _CanvasArea extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final t = AppTokens.of(context);
-
     if (!state.hasImage) {
       return Center(
         child: Column(
@@ -289,14 +283,14 @@ class _CanvasArea extends StatelessWidget {
             Icon(
               Icons.image_outlined,
               size: 40,
-              color: t.cream.withValues(alpha: 0.4),
+              color: Colors.white.withValues(alpha: 0.45),
             ),
             const SizedBox(height: 10),
             Text(
               '还没有选图',
               style: TextStyle(
                 fontSize: 13,
-                color: t.cream.withValues(alpha: 0.55),
+                color: Colors.white.withValues(alpha: 0.65),
               ),
             ),
           ],
@@ -311,6 +305,7 @@ class _CanvasArea extends StatelessWidget {
         // 同视频页：State 里记着上次停在哪一态，换结果就要换 key，
         // 否则「修复后」会从上一条记录带过来。
         key: ValueKey('compare-${state.resultPath}'),
+        title: '图片对比',
         before: Image.memory(
           state.source!,
           fit: BoxFit.contain,
@@ -364,6 +359,7 @@ class _Meta extends StatelessWidget {
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
     return Row(
+      mainAxisSize: MainAxisSize.min,
       children: [
         Text(label, style: TextStyle(fontSize: 11.5, color: t.ink3)),
         const SizedBox(width: 5),
@@ -476,31 +472,44 @@ class _SliderRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final t = AppTokens.of(context);
-    return Row(
-      children: [
-        SizedBox(
-          width: 52,
-          child: Text(label, style: TextStyle(fontSize: 12, color: t.ink3)),
+    final theme = Theme.of(context);
+    return Theme(
+      data: theme.copyWith(
+        materialTapTargetSize: MaterialTapTargetSize.shrinkWrap,
+      ),
+      child: SliderTheme(
+        data: SliderTheme.of(context).copyWith(
+          trackHeight: 3,
+          thumbShape: const RoundSliderThumbShape(enabledThumbRadius: 7),
+          overlayShape: const RoundSliderOverlayShape(overlayRadius: 14),
         ),
-        Expanded(
-          child: Slider(
-            value: value.clamp(min, max),
-            min: min,
-            max: max,
-            divisions: divisions,
-            label: valueLabel,
-            onChanged: onChanged,
-          ),
+        child: Row(
+          children: [
+            SizedBox(
+              width: 52,
+              child: Text(label, style: TextStyle(fontSize: 12, color: t.ink3)),
+            ),
+            Expanded(
+              child: Slider(
+                value: value.clamp(min, max),
+                min: min,
+                max: max,
+                divisions: divisions,
+                label: valueLabel,
+                onChanged: onChanged,
+              ),
+            ),
+            SizedBox(
+              width: 40,
+              child: Text(
+                valueLabel,
+                textAlign: TextAlign.end,
+                style: TextStyle(fontSize: 12, color: t.ink3),
+              ),
+            ),
+          ],
         ),
-        SizedBox(
-          width: 40,
-          child: Text(
-            valueLabel,
-            textAlign: TextAlign.end,
-            style: TextStyle(fontSize: 12, color: t.ink3),
-          ),
-        ),
-      ],
+      ),
     );
   }
 }
